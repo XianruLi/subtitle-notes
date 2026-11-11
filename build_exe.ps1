@@ -1,4 +1,4 @@
-﻿# Build SRTDaemon.exe and assemble the portable folder.
+# Build SRTDaemon.exe and assemble the portable folder.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File build_exe.ps1
 #   (or: pwsh -File build_exe.ps1  when PowerShell 7 is installed)
@@ -37,7 +37,10 @@ if (Test-Path $guide) { Copy-Item $guide (Join-Path $dist '使用说明.md') -Fo
 
 Write-Host '[3/3] Running the packaged self-test...'
 Start-Process -FilePath $exe -ArgumentList '--selftest' -Wait -NoNewWindow
+# The self-test log lands next to the data root: the EXE folder for a portable
+# release, but the checkout root for a development build (dist/SRTDaemon/...).
 $log = Join-Path $dist 'selftest.log'
+if (-not (Test-Path $log)) { $log = Join-Path $root 'selftest.log' }
 if (Test-Path $log) {
     Get-Content $log -Encoding UTF8
     if (Select-String -Path $log -Pattern 'SELFTEST OK' -Quiet) {

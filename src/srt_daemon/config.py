@@ -52,7 +52,15 @@ def _find_project_root() -> Path:
     if getattr(sys, "frozen", False):
         # PyInstaller bundle: data lives next to the executable, not inside
         # the temporary extraction folder.
-        return Path(sys.executable).resolve().parent
+        exe_dir = Path(sys.executable).resolve().parent
+        # A *development* build sits inside the checkout (dist/SRTDaemon/...).
+        # Then use the checkout as the data root so the packaged app and the
+        # source share one output/ and one state file.  Release zips carry no
+        # src/srt_daemon/config.yaml marker and stay self-contained.
+        for ancestor in [exe_dir, *exe_dir.parents]:
+            if (ancestor / "src" / "srt_daemon" / "config.yaml").is_file():
+                return ancestor
+        return exe_dir
 
     # Start from this file's directory:  <root>/src/srt_daemon/config.py
     start = Path(__file__).resolve().parent
