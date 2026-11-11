@@ -6,9 +6,37 @@
 > study notes. Transcription runs **locally** (faster-whisper, CPU or CUDA); only the note
 > writing calls the DeepSeek API. Windows desktop app + CLI, single-folder EXE build.
 
+![演示](doc/demo.gif)
+
 ![任务页](doc/gui-tasks.png)
 
 ![在线视频页](doc/gui-online.png)
+
+## 同学怎么用（4 步）
+
+```powershell
+# 1) 克隆 + 安装依赖
+git clone https://github.com/XianruLi/subtitle-notes.git
+cd subtitle-notes
+pip install -r requirements.txt
+
+# 2) 装 ffmpeg（转录和截图都要用；装过可跳过）
+winget install Gyan.FFmpeg
+
+# 3) 填 API Key
+copy .env.example .env        # 编辑 .env，写 DEEPSEEK_API_KEY=sk-...
+
+# 4) 把字幕 / 视频丢进 videos/，然后启动
+start_gui.bat                 # 图形界面
+python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
+```
+
+笔记会生成在 `output/<文件名>/` 下。
+
+- 有 NVIDIA 显卡（30/40/50 系）：装 **CUDA 12.x + cuDNN 9** 后不用改配置，
+  `device: auto` 会自动用 GPU；没装也能跑（自动回退 CPU）。
+- 只有 CPU：默认模型 `large-v3` 比较慢，超过 30 分钟的录音会自动降级到 `medium`，
+  也可以在 `config.yaml` 里把 `transcribe.model` 改成 `small`。
 
 ## 能做什么
 
