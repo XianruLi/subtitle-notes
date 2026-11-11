@@ -1,4 +1,4 @@
-# Build SRTDaemon.exe and assemble the portable folder.
+﻿# Build SRTDaemon.exe and assemble the portable folder.
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File build_exe.ps1
 #   (or: pwsh -File build_exe.ps1  when PowerShell 7 is installed)

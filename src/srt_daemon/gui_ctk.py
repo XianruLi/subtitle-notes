@@ -22,6 +22,8 @@ from src.srt_daemon.gui import (
     AI_MODELS,
     APP_NAME,
     APP_TITLE,
+    COMPUTE_TYPES,
+    DEVICES,
     DIARIZERS,
     LANGS,
     OUTPUT_FORMATS,
