@@ -33,6 +33,10 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 
 笔记会生成在 `output/<文件名>/` 下。
 
+> **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
+> [Releases · v0.3.0](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.3.0)
+> —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
+
 - 有 NVIDIA 显卡（30/40/50 系）：装 **CUDA 12.x + cuDNN 9** 后不用改配置，
   `device: auto` 会自动用 GPU；没装也能跑（自动回退 CPU）。
 - 只有 CPU：默认模型 `large-v3` 比较慢，超过 30 分钟的录音会自动降级到 `medium`，
