@@ -1,0 +1,285 @@
+"""Shared "subtitle file -> Markdown note" pipeline.
+
+The notes CLI (--once), the online-video fetcher and the desktop GUI all
+end with the same work: parse the subtitle, measure speakers, resolve the
+content-type profile, call the AI, write the Markdown file.  Keeping that in
+one function stops the three entry points from drifting apart.
+
+Usage::
+
+    from src.srt_daemon.pipeline import generate_notes
+
+    result = generate_notes(config, "lecture.vtt", forced_profile="course")
+    print(result.output_path)
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import tempfile
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Optional, Sequence
+
+from src.srt_daemon.config import Config
+from src.srt_daemon.logger import get_logger
+from src.srt_daemon.profiles import (
+    ProfileResolution,
+    ProfileRegistry,
+    resolve_profile,
+)
+from src.srt_daemon.speakers import SpeakerInfo, analyse_speakers
+from src.srt_daemon.subtitle_parser import ParsedSubtitle, parse_subtitle
+
+log = get_logger(__name__)
+
+
+#: Sidecar written next to a transcribed subtitle: which video it came from.
+SIDECAR_SUFFIX = ".source.json"
+
+
+def write_source_sidecar(
+    subtitle_path: str | Path, video_path: str | Path, duration: float = 0.0
+) -> Path:
+    """Record the source video next to a transcribed subtitle.
+
+    Local videos have no URL, so without this the notes pipeline cannot find
+    the picture and [[screenshot:...]] markers would be dropped.
+    """
+    subtitle = Path(subtitle_path)
+    sidecar = subtitle.with_name(subtitle.stem + SIDECAR_SUFFIX)
+    payload = {
+        "video": str(Path(video_path).resolve()),
+        "duration": float(duration or 0.0),
+        "recorded": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    try:
+        sidecar.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError as exc:  # noqa: BLE001 - sidecar is best effort
+        log.warning("Cannot write the source sidecar for %s: %s", subtitle.name, exc)
+    return sidecar
+
+
+def find_source_video(subtitle_path: str | Path) -> Optional[Path]:
+    """Return the video recorded beside *subtitle_path*, when it still exists."""
+    subtitle = Path(subtitle_path)
+    sidecar = subtitle.with_name(subtitle.stem + SIDECAR_SUFFIX)
+    try:
+        payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    candidate = Path(str(payload.get("video") or ""))
+    if not candidate.is_file():
+        return None
+    return candidate
+
+
+def write_note(
+    config: Config,
+    markdown: str,
+    subtitle_path: Path,
+    metadata: dict[str, Any],
+    *,
+    video_path: Optional[str | Path] = None,
+    screenshots: Optional[bool] = None,
+) -> tuple[Path, int]:
+    """Embed screenshots (optional) and write the Markdown file.
+
+    Shared by :func:generate_notes and the folder watcher so both paths
+    behave identically.
+
+    Returns:
+        (note path, number of embedded images)
+    """
+    from src.srt_daemon.writer import MarkdownWriter
+
+    want_screenshots = config.screenshots_enabled if screenshots is None else screenshots
+    images: list[Path] = []
+    staging: Optional[Path] = None
+
+    if want_screenshots:
+        from src.srt_daemon.screenshots import process_markdown
+
+        staging = Path(tempfile.mkdtemp(prefix="shots_"))
+        processed = process_markdown(
+            markdown,
+            Path(video_path) if video_path else None,
+            staging,
+            config=config,
+        )
+        markdown = processed.markdown
+        images = processed.images
+        if not video_path and processed.found:
+            log.info(
+                "Dropped %d screenshot marker(s): no video available for this source",
+                processed.found,
+            )
+
+    metadata = dict(metadata)
+    metadata["images"] = len(images)
+
+    writer = MarkdownWriter(config)
+    output_path = writer.write(
+        content=markdown,
+        source_filename=subtitle_path.name,
+        metadata=metadata,
+    )
+
+    if images:
+        target_dir = output_path.parent / "images"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for image in images:
+            shutil.move(str(image), str(target_dir / image.name))
+        log.info("Embedded %d screenshot(s) into %s", len(images), output_path.parent.name)
+
+    if staging is not None:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    return output_path, len(images)
+
+
+class NotesPipelineError(RuntimeError):
+    """Raised when a subtitle cannot be turned into notes."""
+
+
+@dataclass
+class NotesResult:
+    """Everything an entry point needs after a successful run."""
+
+    output_path: Path
+    parsed: ParsedSubtitle
+    profile: ProfileResolution
+    speaker: SpeakerInfo
+    model: str
+
+    @property
+    def entry_count(self) -> int:
+        """Number of parsed subtitle entries."""
+        return len(self.parsed.entries)
+
+    @property
+    def text_length(self) -> int:
+        """Length of the text handed to the AI."""
+        return len(self.parsed.text)
+
+
+def make_classifier(config: Config) -> Callable[[str, Sequence[Any]], Optional[str]]:
+    """Return a lazy content-type classifier for :func:resolve_profile.
+
+    The AI client is only constructed when the classifier is actually called,
+    so files with a file-name hint never pay for it.
+    """
+    from src.srt_daemon.ai_client import AiClient
+
+    def classify(sample: str, candidates: Sequence[Any]) -> Optional[str]:
+        return AiClient(config).classify_profile(candidates, sample)
+
+    return classify
+
+
+def generate_notes(
+    config: Config,
+    subtitle_path: str | Path,
+    *,
+    forced_profile: Optional[str] = None,
+    extra_metadata: Optional[dict[str, Any]] = None,
+    with_timestamps: bool = True,
+    classifier: Optional[Callable[[str, Sequence[Any]], Optional[str]]] = None,
+    video_path: Optional[str | Path] = None,
+    screenshots: Optional[bool] = None,
+) -> NotesResult:
+    """Turn one subtitle file into a Markdown note.
+
+    Args:
+        config: Resolved daemon configuration.
+        subtitle_path: .srt or .vtt file to process.
+        forced_profile: Profile id that overrides auto-detection (CLI flag).
+        extra_metadata: Additional front-matter fields (for example
+            source_url and platform when the subtitle came from a URL).
+        with_timestamps: Keep [HH:MM:SS] markers in the AI input.
+        classifier: Optional classifier override (tests pass a stub).
+        video_path: Source video for [[screenshot:...]] markers.  When absent the
+            markers are stripped and no images are written.
+        screenshots: Override screenshots.enabled for this call.
+
+    Returns:
+        A :class:NotesResult describing what was produced.
+
+    Raises:
+        NotesPipelineError: When the subtitle has no usable entries.
+        FileNotFoundError: When *subtitle_path* does not exist.
+        UnsupportedSubtitleFormat: When the format cannot be detected.
+    """
+    from src.srt_daemon.ai_client import AiClient
+    from src.srt_daemon.writer import MarkdownWriter
+
+    path = Path(subtitle_path)
+    parsed = parse_subtitle(path, with_timestamps=with_timestamps)
+    if not parsed.entries:
+        raise NotesPipelineError(f"No subtitle entries found in {path.name}")
+
+    registry = ProfileRegistry(config)
+    speaker = analyse_speakers(parsed.entries)
+    resolution = resolve_profile(
+        config,
+        path.name,
+        parsed.text,
+        registry=registry,
+        forced=forced_profile,
+        classifier=classifier or make_classifier(config),
+    )
+    profile = resolution.profile
+    log.info(
+        "Profile for %s: %s (via %s)  speakers=%s  entries=%d",
+        path.name,
+        profile.id,
+        resolution.source,
+        speaker.mode,
+        len(parsed.entries),
+    )
+
+    client = AiClient(config, profile=profile)
+    markdown = client.process(
+        parsed.text,
+        path.name,
+        profile=profile,
+        speaker=speaker,
+        source_format=parsed.format_label,
+    )
+
+    # A transcribed local video leaves a sidecar with its path.
+    if video_path is None:
+        video_path = find_source_video(path)
+
+    metadata: dict[str, Any] = {
+        "format": parsed.format_label,
+        "profile": profile.id,
+        "speakers": speaker.describe(),
+        "entries": len(parsed.entries),
+        "text_length": len(parsed.text),
+        "model": config.ai_model,
+    }
+    if extra_metadata:
+        metadata.update({key: value for key, value in extra_metadata.items() if value})
+
+    output_path, _images = write_note(
+        config,
+        markdown,
+        path,
+        metadata,
+        video_path=video_path,
+        screenshots=screenshots,
+    )
+    log.info("Note written: %s", output_path)
+
+    return NotesResult(
+        output_path=output_path,
+        parsed=parsed,
+        profile=resolution,
+        speaker=speaker,
+        model=config.ai_model,
+    )

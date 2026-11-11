@@ -1,0 +1,26 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+venv/
+.venv/
+
+# Build output
+dist/
+build/
+gui_settings.json
+selftest.log
+
+# Generated content
+logs/*.log*
+!logs/.gitkeep
+output/*
+!output/.gitkeep
+videos/*
+!videos/.gitkeep
+models/
+cookies/
+*.笔记_*.md

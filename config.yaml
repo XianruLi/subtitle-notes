@@ -1,0 +1,244 @@
+# =============================================================================
+# SRT Daemon — Configuration
+# =============================================================================
+# This file is loaded by config.py at startup.
+# Environment variables (from .env or system) override values where noted.
+# =============================================================================
+
+# --- File Watching -----------------------------------------------------------
+watch:
+  # Directory to monitor for new subtitle files (REQUIRED)
+  directory: "videos/"
+  # File extensions to watch (case-insensitive).
+  # The format of every file is auto-detected before parsing (content sniff
+  # first, extension as fallback), so a mislabelled file is still routed to
+  # the correct parser.
+  #   .srt — SubRip   (00:00:01,000 --> 00:00:03,500)
+  #   .vtt — WebVTT   (00:00:01.000 --> 00:00:03.500)
+  extensions: [".srt", ".vtt"]
+  # Polling fallback interval in milliseconds (used when native events unavailable)
+  poll_interval_ms: 1000
+  # Delay in seconds after file detection before processing (debounce)
+  debounce_seconds: 2.0
+
+# --- Output ------------------------------------------------------------------
+output:
+  # Where the Markdown notes are written.
+  # Absolute on purpose: the command line and the packaged GUI then write to
+  # the same folder (and share their history).  A relative path would resolve
+  # against the app folder instead.
+  directory: "output/"
+  # Output filename template — available variables:
+  #   {basename}  — original filename without extension
+  #   {date}      — processing date (YYYY-MM-DD)
+  #   {time}      — processing time (HHMMSS)
+  filename_template: "{basename}_笔记_{date}.md"
+
+# --- AI API (DeepSeek) -------------------------------------------------------
+ai:
+  # DeepSeek model ID (overridable via ``SRT_AI_MODEL`` env var).
+  # The API currently serves exactly two models (verified with GET /models):
+  #   deepseek-flash    — V4.1 Flash: fast & cheap (current default)
+  #   deepseek-v4-pro   — V4 Pro: slower, reasoning-capable
+  model: "deepseek-flash"
+  # Maximum output tokens for the final visible response.
+  max_tokens: 8192
+  # Temperature (0.0 = deterministic, 1.0 = creative).
+  # For scientific/engineering content, keep at 0.0 to minimise hallucination.
+  # deepseek-flash honours this; deepseek-v4-pro mostly ignores it.
+  temperature: 0.1
+  # Reasoning effort — depth of internal thinking before responding.
+  # ONLY deepseek-v4-pro uses it.  deepseek-flash accepts the parameter but
+  # ignores it, so it stays null while flash is selected.  Set it back to
+  # low|medium|high|xhigh|max if you switch ``model`` to deepseek-v4-pro.
+  reasoning_effort: null
+  # Connection timeout in seconds
+  connection_timeout_sec: 10
+  # Read timeout in seconds — reasoning models may need longer (2–5 min).
+  read_timeout_sec: 300
+  # Maximum retry attempts on transient failures
+  max_retries: 3
+  # Base seconds for exponential backoff: delay = base * 2^(attempt-1)
+  retry_backoff_base_sec: 2
+  # Subtitle count threshold above which text is split into chunks
+  chunk_threshold: 2000
+
+  # --- Content-type profiles --------------------------------------------------
+  # Which kind of Markdown document is produced for a file:
+  #   course    — 课程/教程：知识结构、代码块、术语表（历史默认行为）
+  #   meeting   — 会议：议题/结论、决议、待办（负责人+期限）、分歧与未决项
+  #   interview — 访谈/播客：按人归纳观点、主题脉络、问答对照、金句
+  #
+  # Resolution order per file: --profile  >  文件名关键字  >  内容自动识别  >  default_profile
+  default_profile: "course"
+  # Auto-detect the content type with one cheap extra API call when the file
+  # name does not already hint at a type.  Failures fall back to the default.
+  auto_detect_profile: true
+  # Characters of subtitle text sampled for auto-detection (head + middle).
+  profile_sample_chars: 2000
+  # Output-token budget and reasoning effort for the classifier call
+  # (keep both small — it only has to answer with a single word).
+  classifier_max_tokens: 128
+  classifier_reasoning_effort: null   # flash ignores it; "low" only for v4-pro
+  # System prompt file used for the default profile / legacy configs
+  system_prompt_file: "doc/prompts/course.md"
+  # Per-profile settings: system prompt template + file-name hints that force
+  # the profile (matched case-insensitively against the file name).
+  profiles:
+    course:
+      label: "课程/教程"
+      prompt_file: "doc/prompts/course.md"
+      filename_hints: ["课程", "教程", "课堂", "讲座", "教学", "lecture", "course", "tutorial", "lesson", "class"]
+    meeting:
+      label: "会议"
+      prompt_file: "doc/prompts/meeting.md"
+      filename_hints: ["会议", "例会", "周会", "晨会", "评审", "复盘", "对齐", "meeting", "standup", "sync", "review", "retro"]
+    interview:
+      label: "访谈/播客"
+      prompt_file: "doc/prompts/interview.md"
+      filename_hints: ["访谈", "采访", "播客", "对话", "连麦", "interview", "podcast", "talk", "conversation"]
+
+# --- Logging -----------------------------------------------------------------
+logging:
+  # Log file path (relative to project root)
+  file: "logs/srt-daemon.log"
+  # Log level: DEBUG | INFO | WARNING | ERROR
+  level: "INFO"
+  # Log format string (standard Python logging format)
+  format: "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s"
+  # Date format within log entries
+  date_format: "%Y-%m-%d %H:%M:%S"
+  # Rotation strategy: "midnight" (daily) | "H" (hourly) | "D" (daily)
+  rotation: "midnight"
+  # Number of rotated log files to retain
+  backup_count: 30
+
+# --- State -------------------------------------------------------------------
+# Tracks which files were already processed.  Absolute so the CLI and the
+# packaged GUI share it — with a relative path the GUI would start by
+# re-processing every subtitle in the watch directory.
+state_file: "output/.processed.json"
+
+
+# --- Audio/Video transcription (separate command) ----------------------------
+# Turns recordings into speaker-labelled subtitles that the daemon then turns
+# into Markdown notes:
+#     python -m src.srt_daemon.transcribe --new
+# CPU speed measured on this machine (i7-8850H, int8, beam 5, VAD on):
+#     large-v3  x0.39 realtime  (~2.5 h per hour of audio)
+#     medium    x0.89 realtime  (~67 min per hour of audio)
+#     small     x1.65 realtime  (~36 min per hour of audio)
+transcribe:
+  # Directory scanned when no file argument is given
+  source_dir: "videos/"
+  # Where subtitles are written — keep this equal to the watch directory so the
+  # daemon picks the transcript up automatically
+  output_dir: "videos/"
+  # Media extensions picked up when scanning a directory
+  extensions: [".mp3", ".mp4", ".wav", ".m4a", ".mkv", ".mov", ".flac", ".aac", ".opus", ".wma", ".webm"]
+  # Recordings (mp4/mkv/mp3/...) dropped into the watch directory are
+  # transcribed first, then the resulting subtitle becomes a note.
+  auto_transcribe_media: true
+  # faster-whisper model. Any CTranslate2 model id works, e.g.:
+  #   large-v3 (best) | large-v3-turbo (fast, near-large quality) | medium | small
+  #   distil-large-v3 | a HuggingFace id such as "Systran/faster-whisper-large-v3"
+  model: "large-v3"
+  # cpu | cuda | auto   ("auto" tries cuda first and falls back to cpu)
+  device: "auto"
+  # cpu: int8 (fast) / float32   cuda: float16 (default) / int8_float16
+  compute_type: "auto"
+  # Long recordings automatically switch to a faster model (this is what makes
+  # a 2-hour lecture bearable). Explicit --model always wins.
+  long_media:
+    enabled: true
+    threshold_minutes: 30
+    model: "medium"
+  cpu_threads: 8
+  beam_size: 5
+  language: null           # null = auto-detect per recording; or "en" / "zh"
+  vad_filter: true
+  min_silence_ms: 500
+  # Word-level timestamps make speaker splits exact (a sentence that changes
+  # speaker mid-way is split at the word boundary).  Slightly slower ASR, but
+  # diarization dominates the total runtime anyway.
+  word_timestamps: true
+  # Output subtitle format: vtt (speaker voice tags) | srt | both
+  output_format: "vtt"
+  # Remembers which recordings were already transcribed (bypass with --force)
+  state_file: "output/.transcribed.json"
+
+  # --- Speaker diarization (who spoke when) ----------------------------------
+  diarization:
+    # sherpa   — local ONNX models, no account or token needed (recommended)
+    # pyannote — pyannote.audio pipeline; needs pip install pyannote.audio plus a
+    #            free HuggingFace token (models are gated; inference is free)
+    # none     — no speaker labels (plain transcript)
+    backend: "sherpa"
+    segmentation_model: "models/speaker-diarization/sherpa-onnx-pyannote-segmentation-3-0/model.onnx"
+    embedding_model: "models/speaker-diarization/3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"
+    num_speakers: null          # null = cluster automatically
+    # Clustering distance threshold: HIGHER = fewer speakers.
+    # Measured on a real meeting clip: 0.5 -> 8 speakers (over-split),
+    # 0.8 -> 4, 0.95 -> 4.  When the participant count is known, prefer
+    # --num-speakers N, which is exact.
+    cluster_threshold: 0.8
+    min_duration_on: 0.3        # ignore speech shorter than this (seconds)
+    min_duration_off: 0.5       # bridge silence shorter than this (seconds)
+    # pyannote_model: "pyannote/speaker-diarization-3.1"
+    # hf_token: "hf_xxx"        # or set the HF_TOKEN environment variable
+
+
+# --- Online video -> note (yt-dlp) -------------------------------------------
+# Turn a video URL straight into a Markdown note:
+#     python -m src.srt_daemon.fetch https://www.bilibili.com/video/BV...
+#     python -m src.srt_daemon.fetch --dry-run https://youtu.be/xxxx
+#
+# Strategy: use the platform's own subtitles when they exist (instant, free),
+# otherwise download the audio and transcribe locally (slow, uses the whisper
+# model configured above).
+fetch:
+  # false hides the 在线视频 page and disables the --fetch command
+  enabled: true
+  prefer_subtitles: true
+  # Preference order for subtitle tracks (exact match first, then prefix)
+  subtitle_languages: ["zh-Hans", "zh-CN", "zh-TW", "zh", "en", "en-US", "en-orig"]
+  # Upper bound for video downloads (only used when screenshots need frames)
+  max_height: 1080
+  # yt-dlp format selector for the audio-only fallback
+  audio_format: "bestaudio/best"
+  # A subtitle track must cover at least this fraction of the video, otherwise
+  # it is treated as unusable and the audio is transcribed instead.  Bilibili's
+  # AI subtitles are sometimes partial (one 20-minute lecture had cues for only
+  # the first 18 %), and a note built from them would silently describe a
+  # fraction of the video.
+  min_subtitle_coverage: 0.6
+  # Proxy for yt-dlp; null falls back to HTTPS_PROXY / ALL_PROXY from the env
+  proxy: null
+  # Netscape cookies.txt — REQUIRED for Bilibili CC subtitles (SESSDATA).
+  # Export with a browser extension ("Get cookies.txt") into daemons/cookies/bilibili.txt
+  # Use an ABSOLUTE path: the packaged EXE treats its own folder as the data root,
+  # so a relative path would point at dist/SRTDaemon/cookies/ instead.
+  cookies_file: null
+  # Alternative: read cookies straight from an installed browser
+  # cookies_from_browser: "chrome"
+  # Platform maturity (shown as a warning when experimental)
+  platform_status:
+    bilibili: "stable"
+    youtube: "stable"
+    douyin: "experimental"
+    kuaishou: "experimental"
+
+# --- Screenshots inside notes ------------------------------------------------
+# The AI may emit a marker on its own line:
+#     [[screenshot:00:03:21]]
+# With screenshots enabled the matching frame is cut from the video with ffmpeg
+# and embedded into the note as ![](images/shot-000321.jpg).
+#
+# Requires the VIDEO (not just the audio), so turning this on makes URL fetches
+# download the video (capped by fetch.max_height). Local subtitle files have no
+# video, so their markers are simply dropped.
+screenshots:
+  enabled: false
+  max_count: 12      # hard cap per note
+  width: 1280        # rendered width in pixels
+  quality: 3         # ffmpeg -q:v (2 = best, 31 = worst)
