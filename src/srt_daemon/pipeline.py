@@ -39,6 +39,11 @@ log = get_logger(__name__)
 #: Sidecar written next to a transcribed subtitle: which video it came from.
 SIDECAR_SUFFIX = ".source.json"
 
+#: Containers that actually carry a picture (screenshots need the video).
+VIDEO_SUFFIXES = frozenset(
+    {".mp4", ".mkv", ".mov", ".flv", ".webm", ".avi", ".m4v", ".ts", ".wmv", ".mpg", ".mpeg"}
+)
+
 
 def write_source_sidecar(
     subtitle_path: str | Path, video_path: str | Path, duration: float = 0.0
@@ -76,6 +81,51 @@ def find_source_video(subtitle_path: str | Path) -> Optional[Path]:
     if not candidate.is_file():
         return None
     return candidate
+
+
+def stems_match(subtitle_stem: str, video_stem: str) -> bool:
+    """True when a subtitle stem belongs to a video stem.
+
+    "lecture.vtt" matches "lecture.mp4", and so does "lecture.en.vtt" or
+    "lecture.zh-Hans.vtt" — that is how browser CC-export extensions name the
+    file next to the downloaded video.
+    """
+    if subtitle_stem == video_stem:
+        return True
+    return subtitle_stem.startswith(video_stem + ".") or video_stem.startswith(
+        subtitle_stem + "."
+    )
+
+
+def find_sibling_video(subtitle_path: str | Path) -> Optional[Path]:
+    """Return a video sitting next to *subtitle_path* for the same recording.
+
+    Downloading a video and its subtitle (e.g. a YouTube CC export) into one
+    folder is a common workflow; such a subtitle needs no transcription, but the
+    picture is still useful for screenshots.  An exact stem wins, then a
+    language-suffixed one ("lecture.en.vtt" next to "lecture.mp4").
+    """
+    subtitle = Path(subtitle_path)
+    exact: list[Path] = []
+    loose: list[Path] = []
+    try:
+        entries = list(subtitle.parent.iterdir())
+    except OSError:
+        return None
+    for candidate in entries:
+        if not candidate.is_file() or candidate == subtitle:
+            continue
+        if candidate.suffix.lower() not in VIDEO_SUFFIXES:
+            continue
+        if candidate.stem == subtitle.stem:
+            exact.append(candidate)
+        elif stems_match(subtitle.stem, candidate.stem):
+            loose.append(candidate)
+    if exact:
+        return sorted(exact)[0]
+    if loose:
+        return sorted(loose)[0]
+    return None
 
 
 def write_note(
@@ -251,9 +301,16 @@ def generate_notes(
         source_format=parsed.format_label,
     )
 
-    # A transcribed local video leaves a sidecar with its path.
+    # Picture for [[screenshot:...]] markers, in order of preference:
+    #   1. an explicitly supplied video (URL fetch / GUI),
+    #   2. the sidecar written when the subtitle was transcribed from a video,
+    #   3. a video next to the subtitle with the same name.
     if video_path is None:
         video_path = find_source_video(path)
+    if video_path is None:
+        video_path = find_sibling_video(path)
+        if video_path is not None:
+            log.info("Using the sibling video for screenshots: %s", video_path.name)
 
     metadata: dict[str, Any] = {
         "format": parsed.format_label,

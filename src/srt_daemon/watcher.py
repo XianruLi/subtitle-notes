@@ -402,6 +402,17 @@ class FileWatcher:
         try:
             # --- Recordings: transcribe first, then process the subtitle ------
             if self._is_media(file_path):
+                sibling = self._find_subtitle_for(file_path)
+                if sibling is not None:
+                    log.info(
+                        "Subtitle already available for %s (%s) — skipping transcription",
+                        file_path.name,
+                        sibling.name,
+                    )
+                    self._mark_processed(file_path, current_hash, sibling)
+                    self._process_file(sibling)
+                    return
+
                 subtitle = self._transcribe_media(file_path)
                 if subtitle is None:
                     return
@@ -529,13 +540,31 @@ class FileWatcher:
         return self._find_subtitle_for(media_path)
 
     def _find_subtitle_for(self, media_path: Path) -> Optional[Path]:
-        """Locate the subtitle a previous transcription produced."""
-        output_dir = self._config.transcribe_output_dir
-        for suffix in self._config.watch_extensions:
-            candidate = output_dir / f"{media_path.stem}{suffix}"
-            if candidate.exists():
-                return candidate
-        return None
+        """Locate an existing subtitle for *media_path*.
+
+        Checks the recording's own folder first (a downloaded video plus its
+        subtitle export usually sit together), then the transcription output
+        directory.
+        """
+        from src.srt_daemon.pipeline import stems_match
+
+        suffixes = {str(ext).lower() for ext in self._config.watch_extensions}
+        loose: Optional[Path] = None
+        for folder in (media_path.parent, self._config.transcribe_output_dir):
+            try:
+                entries = list(folder.iterdir())
+            except OSError:
+                continue
+            for candidate in entries:
+                if not candidate.is_file() or candidate == media_path:
+                    continue
+                if candidate.suffix.lower() not in suffixes:
+                    continue
+                if candidate.stem == media_path.stem:
+                    return candidate
+                if loose is None and stems_match(candidate.stem, media_path.stem):
+                    loose = candidate
+        return loose
 
     # ------------------------------------------------------------------
     # Internal: state file management

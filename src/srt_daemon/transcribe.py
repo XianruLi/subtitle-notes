@@ -370,10 +370,8 @@ def probe_media_duration(source: Path) -> float:
     return 0.0
 
 
-#: Containers that actually carry a picture (screenshots need the video).
-VIDEO_SUFFIXES = frozenset(
-    {".mp4", ".mkv", ".mov", ".flv", ".webm", ".avi", ".m4v", ".ts", ".wmv", ".mpg", ".mpeg"}
-)
+#: Containers that actually carry a picture (shared with the notes pipeline).
+from src.srt_daemon.pipeline import VIDEO_SUFFIXES  # noqa: E402  (re-export)
 
 
 # ---------------------------------------------------------------------------

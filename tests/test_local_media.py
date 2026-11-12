@@ -12,6 +12,7 @@ import pytest
 
 from src.srt_daemon.config import Config
 from src.srt_daemon.pipeline import (
+    find_sibling_video,
     find_source_video,
     generate_notes,
     write_source_sidecar,
@@ -208,3 +209,124 @@ class TestFetchSwitch:
             fetch_module.main()
 
         assert excinfo.value.code == 1
+
+
+
+class TestSiblingVideo:
+    """A downloaded video next to its subtitle supplies the screenshots."""
+
+    def test_finds_the_same_stem_video(self, tmp_path: Path) -> None:
+        subtitle = tmp_path / "lecture.vtt"
+        subtitle.write_text("WEBVTT\n", encoding="utf-8")
+        video = tmp_path / "lecture.mp4"
+        video.write_bytes(b"x")
+
+        assert find_sibling_video(subtitle) == video
+
+    def test_ignores_audio_and_other_names(self, tmp_path: Path) -> None:
+        subtitle = tmp_path / "lecture.vtt"
+        subtitle.write_text("WEBVTT\n", encoding="utf-8")
+        (tmp_path / "lecture.mp3").write_bytes(b"x")
+        (tmp_path / "other.mp4").write_bytes(b"x")
+
+        assert find_sibling_video(subtitle) is None
+
+    def test_none_when_folder_is_empty(self, tmp_path: Path) -> None:
+        subtitle = tmp_path / "a.vtt"
+        subtitle.write_text("WEBVTT\n", encoding="utf-8")
+
+        assert find_sibling_video(subtitle) is None
+
+    @needs_ffmpeg
+    def test_generate_notes_uses_the_sibling_video(
+        self, temp_config: Config, tmp_path: Path
+    ) -> None:
+        temp_config._data["screenshots"] = {
+            "enabled": True,
+            "max_count": 2,
+            "width": 320,
+            "quality": 5,
+        }
+        subtitle = temp_config.watch_dir / "lecture.vtt"
+        subtitle.write_text(
+            "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nhello\n", encoding="utf-8"
+        )
+        make_video(temp_config.watch_dir / "lecture.mp4", 6)
+
+        with patch(
+            "src.srt_daemon.ai_client.AiClient.process",
+            return_value="body\n\n[[screenshot:00:00:02]]\n",
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.classify_profile", return_value=None
+        ):
+            result = generate_notes(temp_config, subtitle)
+
+        text = result.output_path.read_text(encoding="utf-8")
+        assert "![](images/" in text
+        assert (result.output_path.parent / "images").is_dir()
+
+
+class TestWatchPrefersExistingSubtitle:
+    def test_existing_subtitle_skips_transcription(self, temp_config: Config) -> None:
+        enable_media(temp_config)
+        media = temp_config.watch_dir / "lecture.mp4"
+        media.write_bytes(b"fake")
+        subtitle = temp_config.watch_dir / "lecture.vtt"
+        subtitle.write_text(
+            "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello world\n", encoding="utf-8"
+        )
+
+        watcher = FileWatcher(temp_config)
+        client = MagicMock()
+        client.process.return_value = "# Notes\n\nbody"
+        client.classify_profile.return_value = None
+
+        with patch("src.srt_daemon.transcribe.Transcriber") as transcriber, patch.object(
+            FileWatcher, "_get_ai_client", return_value=client
+        ):
+            watcher._process_file(media)
+
+        transcriber.assert_not_called()
+        assert list(temp_config.output_dir.rglob("*.md"))
+
+    def test_subtitle_in_the_media_folder_is_found(self, temp_config: Config) -> None:
+        enable_media(temp_config)
+        other = temp_config.watch_dir / "elsewhere"
+        other.mkdir()
+        media = other / "talk.mp4"
+        media.write_bytes(b"fake")
+        subtitle = other / "talk.srt"
+        subtitle.write_text("1\n00:00:01,000 --> 00:00:02,000\nhi\n", encoding="utf-8")
+
+        watcher = FileWatcher(temp_config)
+
+        assert watcher._find_subtitle_for(media) == subtitle
+
+class TestLanguageSuffixedNames:
+    """CC export extensions usually append a language: lecture.en.vtt."""
+
+    def test_sibling_video_matches_a_language_suffix(self, tmp_path: Path) -> None:
+        subtitle = tmp_path / "lecture.en.vtt"
+        subtitle.write_text("WEBVTT\n", encoding="utf-8")
+        video = tmp_path / "lecture.mp4"
+        video.write_bytes(b"x")
+
+        assert find_sibling_video(subtitle) == video
+
+    def test_watcher_finds_a_language_suffixed_subtitle(self, temp_config: Config) -> None:
+        enable_media(temp_config)
+        media = temp_config.watch_dir / "lecture.mp4"
+        media.write_bytes(b"x")
+        subtitle = temp_config.watch_dir / "lecture.zh-Hans.vtt"
+        subtitle.write_text("WEBVTT\n", encoding="utf-8")
+
+        watcher = FileWatcher(temp_config)
+
+        assert watcher._find_subtitle_for(media) == subtitle
+
+    def test_unrelated_names_do_not_match(self, tmp_path: Path) -> None:
+        subtitle = tmp_path / "lecture.vtt"
+        subtitle.write_text("WEBVTT\n", encoding="utf-8")
+        (tmp_path / "lecture2.mp4").write_bytes(b"x")
+
+        assert find_sibling_video(subtitle) is None
