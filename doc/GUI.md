@@ -112,11 +112,12 @@
 
 ### 设置
 
-- **路径**：监听目录、输出目录
+- **路径**：监听目录、输出目录、**保存位置**
+  （集中目录 = 全部写在 output/；与源文件同目录 = 笔记跟着字幕/视频所在文件夹走）
 - **AI**：模型（deepseek-flash / deepseek-v4-pro）、默认笔记类型
 - **转录**：Whisper 模型、设备、语言、聚类后端、CPU 线程
-  （超过 transcribe.long_media.threshold_minutes 分钟的录音会自动换成
-  transcribe.long_media.model，可在 config.yaml 里改阈值/关闭）
+  （transcribe.long_media 打开后，超过 threshold_minutes 分钟的录音会自动换成
+  transcribe.long_media.model；**默认关闭**，即始终用你配置的模型）
 - **抓取**：代理、cookies 文件路径、清晰度上限（截图用）
 - **截图**：总开关、最多张数、图片宽度
 - **窗口**：启动后自动监听、关闭最小化到托盘、开机自启
