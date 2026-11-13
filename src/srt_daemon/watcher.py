@@ -272,12 +272,24 @@ class FileWatcher:
             return
 
         candidates: list[Path] = []
+        ignored_media = 0
         for entry in watch_dir.iterdir():
             if not entry.is_file():
                 continue
             if entry.suffix.lower() not in self._allowed_extensions:
+                if self._is_media(entry) and not self._config.transcribe_auto_media:
+                    ignored_media += 1
                 continue
             candidates.append(entry)
+
+        if ignored_media:
+            log.info(
+                "%d recording file(s) in %s are ignored: auto-transcription is "
+                "off. Use the GUI new-task page or --transcribe with "
+                "--num-speakers/--notes/--profile",
+                ignored_media,
+                watch_dir,
+            )
 
         if not candidates:
             log.info("_scan_existing: no subtitle files found in %s", watch_dir)
@@ -874,6 +886,7 @@ class _SubtitleEventHandler(FileSystemEventHandler):
 
         path = Path(raw_path)
         if path.suffix.lower() not in self._watcher._allowed_extensions:
+            self._watcher._explain_ignored_media(path)
             return
 
         self._watcher._on_file_event(path)
