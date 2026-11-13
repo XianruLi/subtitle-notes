@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.srt_daemon.logger import get_logger
-from src.srt_daemon.subtitle_base import SubtitleEntry, SubtitleParserBase
+from src.srt_daemon.subtitle_base import SubtitleEntry, SubtitleParserBase, clean_payload
 
 log = get_logger(__name__)
 
@@ -113,7 +113,7 @@ class SrtParser(SubtitleParserBase):
             the block is incomplete or has no text."""
             nonlocal last_seen_index
             if current_index is not None and current_start and current_end:
-                text = "\n".join(current_text_lines).strip()
+                text = clean_payload("\n".join(current_text_lines))
                 if text:
                     last_seen_index = current_index
                     return SrtEntry(

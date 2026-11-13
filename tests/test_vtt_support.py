@@ -553,3 +553,40 @@ class TestWatcherVttPipeline:
         assert not mock_ai.called
         assert str(broken.resolve()) not in watcher._state["files"]
         assert str(broken.resolve()) not in watcher._state["in_progress"]
+
+
+class TestSharedPayloadCleaner:
+    """Both formats must hand plain text to the AI, not markup."""
+
+    def test_srt_strips_html_tags(self, tmp_path: Path) -> None:
+        path = tmp_path / "a.srt"
+        path.write_text(
+            "1\n00:00:01,000 --> 00:00:02,000\n<i>Bob</i>: hello &amp; welcome\n",
+            encoding="utf-8",
+        )
+
+        parsed = SrtParser().parse(path)
+
+        assert parsed[0].text == "Bob: hello & welcome"
+
+    def test_srt_strips_ass_overrides(self, tmp_path: Path) -> None:
+        path = tmp_path / "b.srt"
+        path.write_text(
+            "1\n00:00:01,000 --> 00:00:02,000\n{\\an8}centered line\n",
+            encoding="utf-8",
+        )
+
+        parsed = SrtParser().parse(path)
+
+        assert parsed[0].text == "centered line"
+
+    def test_vtt_keeps_voice_as_a_prefix(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.vtt"
+        path.write_text(
+            "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Alice>hi <b>there</b></v>\n",
+            encoding="utf-8",
+        )
+
+        parsed = VttParser().parse(path)
+
+        assert parsed[0].text == "Alice: hi there"

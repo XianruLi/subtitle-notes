@@ -26,6 +26,8 @@ Usage::
 
 from __future__ import annotations
 
+import html
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +46,30 @@ _BOM_UTF16_BE = b"\xfe\xff"
 
 # Maximum character length considered a "short" entry for merging
 _DEFAULT_SHORT_TEXT_LENGTH = 80
+
+# Inline markup seen in real subtitle files: HTML-ish tags (<i>, <font ...>) and
+# ASS override blocks ({\an8}, {\pos(1,2)}) that leak into "SRT" exports.
+_INLINE_TAG_RE = re.compile(r"<[^<>]{0,200}>")
+_ASS_OVERRIDE_RE = re.compile(r"\{\\[^{}]{0,200}\}")
+
+
+def clean_payload(text: str) -> str:
+    """Strip inline markup and decode HTML entities in one subtitle payload.
+
+    SRT and WebVTT exports from different tools mix plain text, HTML tags and
+    ASS-style overrides.  Removing them before the text reaches the AI keeps
+    the transcript readable and stops markup from polluting the notes.
+
+    Args:
+        text: Raw cue text.
+
+    Returns:
+        Cleaned text (may be empty, never None).
+    """
+    cleaned = html.unescape(text)
+    cleaned = _INLINE_TAG_RE.sub("", cleaned)
+    cleaned = _ASS_OVERRIDE_RE.sub("", cleaned)
+    return cleaned.strip()
 
 # Bytes sampled when sniffing the encoding of a file.
 _ENCODING_SAMPLE_BYTES = 4096
