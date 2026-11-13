@@ -14,9 +14,9 @@
 
 ![在线视频页](doc/gui-online.png)
 
-## 同学怎么用（4 步）
+## 具体使用方法（4 步）
 
-§§§powershell
+```powershell
 # 1) 克隆 + 安装依赖
 git clone https://github.com/XianruLi/subtitle-notes.git
 cd subtitle-notes
@@ -31,7 +31,7 @@ copy .env.example .env        # 编辑 .env，写 DEEPSEEK_API_KEY=sk-...
 # 4) 把字幕 / 视频丢进 videos/，然后启动
 start_gui.bat                 # 图形界面
 python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
-§§§
+```
 
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
@@ -41,7 +41,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 
 ## 三种入口，按场景选
 
-| 你手里的东西 | 用哪个入口 | 为什么 |
+| 输入类型 | 用哪个入口 | 为什么 |
 |---|---|---|
 | 只有字幕（srt / vtt） | **丢进监听目录**，全自动 | 零成本、秒级，唯一要判断的"类型"能自动识别 |
 | 字幕 + 同名视频 | 同上，或「新建任务 → 本地字幕」 | 同名视频自动用于截图，**不会重新转录** |
@@ -68,11 +68,11 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 
 `config.yaml`：
 
-§§§yaml
+```yaml
 output:
   directory: "output/"    # 集中模式下的根目录
   mode: central           # central（默认）| source
-§§§
+```
 
 | 模式 | 笔记落在 | 适合 |
 |---|---|---|
@@ -100,34 +100,34 @@ output:
 
 1. 安装依赖
 
-   §§§powershell
+   ```powershell
    pip install -r requirements.txt
-   §§§
+   ```
 
 2. 安装 ffmpeg（转录和截图都要用）
 
-   §§§powershell
+   ```powershell
    winget install Gyan.FFmpeg
-   §§§
+   ```
 
 3. 配置 API Key
 
-   §§§powershell
+   ```powershell
    copy .env.example .env
    # 编辑 .env，填入 DEEPSEEK_API_KEY=sk-...
-   §§§
+   ```
 
 4. 放一个字幕到 `videos/` 目录
 
 5. 启动
 
-   §§§powershell
+   ```powershell
    # 图形界面（也可以双击 start_gui.bat）
    python -m src.srt_daemon.app
 
    # 或者命令行扫一遍
    python -m src.srt_daemon.main --scan
-   §§§
+   ```
 
 6. 笔记生成在 `output/<字幕名>/` 下
 
@@ -136,7 +136,7 @@ output:
 
 ## 模型与速度
 
-转录是本地跑的，速度只取决于你的 CPU/GPU：
+转录在本地运行，速度取决于 CPU / GPU：
 
 | 模型 | 参数 | CPU（8 线程 int8） | GPU（RTX 5070 等） |
 |------|------|--------------------|---------------------|
@@ -146,33 +146,33 @@ output:
 
 **长音频自动降级（可选，默认关闭）**：打开后超过 30 分钟且没有显式指定模型时，
 自动从 `large-v3` 换成 `medium`（日志会写 `Long recording ... switching model`）。
-默认 `enabled: false`，也就是无论多长都用你配置的模型：
+默认 `enabled: false`，也就是无论多长都使用配置的模型：
 
-§§§yaml
+```yaml
 transcribe:
   long_media:
     enabled: true
     threshold_minutes: 30
     model: "medium"
-§§§
+```
 
 关闭时行为就是"永远用配置的模型"；命令里显式 `--model` 永远优先于这套策略。
 
 ## GPU 加速（RTX 30/40/50 系列）
 
-§§§yaml
+```yaml
 transcribe:
   device: "auto"        # auto = 先试 cuda，失败自动回退 cpu
   compute_type: "auto"  # cuda 用 float16，cpu 用 int8
-§§§
+```
 
 1. 装最新显卡驱动
 2. 装 **CUDA 12.x + cuDNN 9**（CTranslate2 4.7 的要求）
 3. 保持 `device: auto`，启动日志会显示实际用的设备：
 
-§§§text
+```text
 Model ready in 2.9s (device=cuda compute=float16)
-§§§
+```
 
 显存参考：`large-v3` float16 约 3–4 GB；8 GB 以上可以放心用。
 
@@ -199,10 +199,10 @@ Model ready in 2.9s (device=cuda compute=float16)
 - **B站**：CC 字幕（含 AI 字幕）需要登录 cookie。用浏览器扩展导出 Netscape 格式的
   `cookies.txt`，放到 `cookies/` 下，然后在 `config.yaml` 里填路径：
 
-  §§§yaml
+  ```yaml
   fetch:
     cookies_file: "cookies/bilibili.txt"
-  §§§
+  ```
 
   程序会检查字幕**覆盖率**（低于 60% 视为不可用，自动转写），并校验字幕时长是否与
   视频匹配，避免拿到别的视频的字幕。
@@ -212,7 +212,7 @@ Model ready in 2.9s (device=cuda compute=float16)
 
 ## 目录结构
 
-§§§text
+```text
 config.yaml        配置（相对路径可移植）
 .env               API Key（不要提交）
 videos/            放字幕 / 视频 / 录音（监听目录）
@@ -225,14 +225,14 @@ doc/prompts/       三套提示词模板，可以直接改
 doc/architecture.md  全部流程图（监听 / 笔记 / 转录 / 抓取 / 截图）
 doc/GUI.md         界面说明
 doc/OPERATIONS.md  部署、GPU、运维
-§§§
+```
 
 说话人聚类模型需要放到 `models/speaker-diarization/`，见 `doc/OPERATIONS.md` 4f；
 不装也能用，设 `transcribe.diarization.backend: none` 即可。
 
 ## 命令行
 
-§§§powershell
+```powershell
 python -m src.srt_daemon.app                       # 打开界面
 python -m src.srt_daemon.main --scan               # 处理 videos/ 里所有新文件
 python -m src.srt_daemon.main --once "x.vtt" --profile meeting
@@ -244,18 +244,18 @@ python -m src.srt_daemon.main --transcribe "会议.mp3" --num-speakers 3 --notes
 
 python -m src.srt_daemon.fetch "https://b23.tv/xxx" --screenshots
 python -m src.srt_daemon.fetch --dry-run "https://youtu.be/xxx"
-§§§
+```
 
 > `transcribe` 只生产字幕；`main --transcribe ... --notes` 会在转录完成后
 > 直接调用笔记流水线（GUI 里就是「转录后自动生成笔记」那个勾选）。
 
 ## 打包成 EXE
 
-§§§powershell
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File build_exe.ps1
 # 产物：dist/SRTDaemon/SRTDaemon.exe（单文件夹便携版）
 dist\SRTDaemon\SRTDaemon.exe --selftest
-§§§
+```
 
 打包前请先关掉正在运行的 `SRTDaemon.exe`，否则会因文件占用失败。
 
