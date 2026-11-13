@@ -277,13 +277,12 @@ class TestWatchPrefersExistingSubtitle:
         )
 
         watcher = FileWatcher(temp_config)
-        client = MagicMock()
-        client.process.return_value = "# Notes\n\nbody"
-        client.classify_profile.return_value = None
 
-        with patch("src.srt_daemon.transcribe.Transcriber") as transcriber, patch.object(
-            FileWatcher, "_get_ai_client", return_value=client
-        ):
+        with patch(
+            "src.srt_daemon.ai_client.AiClient.process", return_value="# Notes"
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.classify_profile", return_value=None
+        ), patch("src.srt_daemon.transcribe.Transcriber") as transcriber:
             watcher._process_file(media)
 
         transcriber.assert_not_called()
@@ -395,11 +394,12 @@ class TestWatchIgnoresRecordingsWhenOff:
             "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n", encoding="utf-8"
         )
         watcher = FileWatcher(temp_config)
-        client = MagicMock()
-        client.process.return_value = "# Notes"
-        client.classify_profile.return_value = None
 
-        with patch.object(FileWatcher, "_get_ai_client", return_value=client):
+        with patch(
+            "src.srt_daemon.ai_client.AiClient.process", return_value="# Notes"
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.classify_profile", return_value=None
+        ):
             watcher._process_file(subtitle)
 
         assert list(temp_config.output_dir.rglob("*.md"))

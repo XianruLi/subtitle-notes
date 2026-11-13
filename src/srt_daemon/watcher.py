@@ -443,83 +443,34 @@ class FileWatcher:
                 self._process_file(subtitle)
                 return
 
-            # Stage 1: Detect the subtitle format (SRT / WebVTT) and parse
-            from src.srt_daemon.subtitle_parser import parse_subtitle
+            # One pipeline for every entry point: parsing, speaker analysis,
+            # profile resolution, the AI call (including the "a video is
+            # available, so emit picture markers" hint) and screenshot
+            # extraction all live in pipeline.generate_notes.  Keeping a second
+            # copy here is how the watcher silently lost screenshots before.
+            from src.srt_daemon.pipeline import generate_notes
 
-            parsed = parse_subtitle(file_path, with_timestamps=True)
-            entries = parsed.entries
-            if not entries:
-                log.warning("No subtitle entries found in %s — skipping", file_path.name)
-                return
-            text = parsed.text
-            entry_count = len(entries)
-            text_length = len(text)
-            log.info(
-                "Parsed %d %s entries (%d chars) from %s",
-                entry_count, parsed.format_label, text_length, file_path.name,
-            )
-
-            # Stage 1.5: decide how the notes should be shaped (profile) and
-            # how speakers are represented in this transcript.
-            speaker = analyse_speakers(entries)
-            resolution = resolve_profile(
-                self._config,
-                file_path.name,
-                text,
-                registry=self._registry,
-                forced=self._forced_profile,
-                classifier=self._classify_content,
-            )
-            profile = resolution.profile
-            log.info(
-                "Notes profile for %s: %s (via %s — %s)  speaker_mode=%s",
-                file_path.name,
-                profile.id,
-                resolution.source,
-                resolution.detail,
-                speaker.mode,
-            )
-
-            # Stage 2: AI processing
-            ai_client = self._get_ai_client(profile)
             try:
-                markdown = ai_client.process(
-                    text,
-                    file_path.name,
-                    profile=profile,
-                    speaker=speaker,
-                    source_format=parsed.format_label,
+                result = generate_notes(
+                    self._config,
+                    file_path,
+                    forced_profile=self._forced_profile,
+                    classifier=self._classify_content,
                 )
             except Exception as exc:
-                log.error(
-                    "AI processing failed for %s: %s", file_path.name, exc
-                )
+                log.error("Notes pipeline failed for %s: %s", file_path.name, exc)
                 return
 
-            # Stage 3: Write output (screenshots included when enabled)
-            from src.srt_daemon.pipeline import find_source_video, write_note
+            output_path = result.output_path
 
-            output_path, image_count = write_note(
-                self._config,
-                markdown,
-                file_path,
-                {
-                    "format": parsed.format_label,
-                    "profile": profile.id,
-                    "speakers": speaker.describe(),
-                    "entries": entry_count,
-                    "text_length": text_length,
-                },
-                video_path=find_source_video(file_path),
-            )
-            if image_count:
-                log.info("Embedded %d screenshot(s) for %s", image_count, file_path.name)
-
-            # Stage 4: Record successful processing
+            # Record successful processing
             self._mark_processed(file_path, current_hash, output_path)
             log.info(
                 "Successfully processed: %s -> %s (%d entries, profile=%s)",
-                file_path.name, output_path.name, entry_count, profile.id,
+                file_path.name,
+                output_path.name,
+                result.entry_count,
+                result.profile.profile.id,
             )
 
         except Exception:
