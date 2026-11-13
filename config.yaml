@@ -28,6 +28,9 @@ output:
   # the same folder (and share their history).  A relative path would resolve
   # against the app folder instead.
   directory: "output/"
+  # central = every note under the folder above (default)
+  # source  = write each note next to the subtitle/video it came from
+  mode: central
   # Output filename template — available variables:
   #   {basename}  — original filename without extension
   #   {date}      — processing date (YYYY-MM-DD)
