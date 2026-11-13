@@ -974,6 +974,9 @@ class Fetcher:
                 },
                 video_path=video,
                 screenshots=want_shots,
+                # URL notes have no project folder: always use the central
+                # output directory, even when output.mode is "source".
+                output_root=self._config.output_dir,
             )
 
         return FetchOutcome(

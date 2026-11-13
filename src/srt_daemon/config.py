@@ -138,6 +138,18 @@ class Config:
         return _resolve_path(self._data["output"]["directory"], self._project_root)
 
     @property
+    def output_mode(self) -> str:
+        """Where notes are written: 'central' or 'source'.
+
+        central (the default) keeps every note under output.directory.
+        source writes each note next to the subtitle/video it came from
+        (a per-source sub-folder inside that folder), which suits notes that
+        belong to different project folders.
+        """
+        raw = str(self._data.get("output", {}).get("mode", "central")).strip().lower()
+        return raw if raw in {"central", "source"} else "central"
+
+    @property
     def output_filename_template(self) -> str:
         """Template for output filenames ({basename}, {date}, {time})."""
         return self._data["output"]["filename_template"]

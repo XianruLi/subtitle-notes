@@ -136,6 +136,7 @@ def write_note(
     *,
     video_path: Optional[str | Path] = None,
     screenshots: Optional[bool] = None,
+    output_root: Optional[Path] = None,
 ) -> tuple[Path, int]:
     """Embed screenshots (optional) and write the Markdown file.
 
@@ -177,6 +178,7 @@ def write_note(
         content=markdown,
         source_filename=subtitle_path.name,
         metadata=metadata,
+        base_dir=output_root,
     )
 
     if images:
@@ -227,6 +229,28 @@ class NotesResult:
         return len(self.parsed.text)
 
 
+def resolve_output_root(
+    config: Config,
+    subtitle_path: Path,
+    explicit: Optional[Path] = None,
+) -> Optional[Path]:
+    """Where this note should be written.
+
+    Args:
+        config: Resolved configuration.
+        subtitle_path: Subtitle being processed.
+        explicit: Caller override (URL fetches pin the central directory).
+
+    Returns:
+        A base directory, or None to use the configured output directory.
+    """
+    if explicit is not None:
+        return explicit
+    if config.output_mode == "source":
+        return Path(subtitle_path).resolve().parent
+    return None
+
+
 def make_classifier(config: Config) -> Callable[[str, Sequence[Any]], Optional[str]]:
     """Return a lazy content-type classifier for :func:resolve_profile.
 
@@ -251,6 +275,7 @@ def generate_notes(
     classifier: Optional[Callable[[str, Sequence[Any]], Optional[str]]] = None,
     video_path: Optional[str | Path] = None,
     screenshots: Optional[bool] = None,
+    output_root: Optional[Path] = None,
 ) -> NotesResult:
     """Turn one subtitle file into a Markdown note.
 
@@ -350,6 +375,7 @@ def generate_notes(
         metadata,
         video_path=video_path,
         screenshots=screenshots,
+        output_root=resolve_output_root(config, path, output_root),
     )
     log.info("Note written: %s", output_path)
 

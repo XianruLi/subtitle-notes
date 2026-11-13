@@ -81,6 +81,7 @@ class MarkdownWriter:
         content: str,
         source_filename: str,
         metadata: Optional[dict] = None,
+        base_dir: Optional[Path] = None,
     ) -> Path:
         """Write AI-generated Markdown content to the output file.
 
@@ -92,6 +93,8 @@ class MarkdownWriter:
             source_filename: Original subtitle filename (used for naming
                 the output sub-directory and file).
             metadata: Optional dict with extra processing metadata.
+            base_dir: Root for the output folder instead of output.directory
+                (output.mode="source" writes beside the source file).
                 Supported keys:
 
                 * ``format`` — subtitle format label (``SRT`` / ``VTT``)
@@ -115,7 +118,9 @@ class MarkdownWriter:
 
         # 1. Resolve output path
         output_path = self._resolve_output_path(
-            source_filename, str(metadata.get("profile") or "general")
+            source_filename,
+            str(metadata.get("profile") or "general"),
+            base_dir=base_dir,
         )
 
         # 2. Ensure the output directory exists
@@ -213,7 +218,10 @@ class MarkdownWriter:
         return "\n".join(lines)
 
     def _resolve_output_path(
-        self, source_filename: str, profile: str = "general"
+        self,
+        source_filename: str,
+        profile: str = "general",
+        base_dir: Optional[Path] = None,
     ) -> Path:
         """Build the absolute output :class:`Path` for a given source file.
 
@@ -229,6 +237,7 @@ class MarkdownWriter:
                 or a path).
             profile: Content-type profile id, available in the filename
                 template as ``{profile}``.
+            base_dir: Optional root for this note instead of output.directory.
 
         Returns:
             Absolute output path.  Directories on the path are **not**
@@ -254,8 +263,9 @@ class MarkdownWriter:
         # Resolve the filename from the template.
         resolved_filename = self._template.format(**template_vars)
 
-        # Assemble full path: output_dir / basename_subdir / filename
-        return self._output_dir / safe_basename / resolved_filename
+        # Assemble full path: root / basename_subdir / filename
+        root = Path(base_dir) if base_dir is not None else self._output_dir
+        return root / safe_basename / resolved_filename
 
 
 # ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ flowchart TD
     T["本地转录 transcribe"]
     FX["在线抓取 fetch"]
     N["笔记流水线 pipeline.generate_notes"]
-    OUT["output/名字/名字_笔记_日期.md + images/"]
+    OUT["output/名字/… 或 <源文件夹>/名字/… （output.mode）"]
 
     S1 --> W
     S2 --> W
@@ -134,7 +134,7 @@ flowchart TD
     I --> J
 
     J --> K["write_note → 流水线 E 截图"]
-    K --> L["output/名字/名字_笔记_日期.md"]
+    K --> L["output/名字/名字_笔记_日期.md（或源文件夹/名字/…）"]
 ```
 
 front matter 会记录：来源文件名、处理时间、模型、格式、profile、说话人、条目数、
@@ -280,6 +280,10 @@ flowchart TD
 | 文件 | 作用 | 键 |
 |------|------|----|
 | output/.processed.json | 字幕是否已出过笔记 | 绝对路径 + SHA-256 |
+
+笔记的位置由 `output.mode` 决定：`central` 写在 `output.directory`
+（默认），`source` 写在源文件所在文件夹（`<名字>/` 子目录，含 images/）；
+在线视频的笔记永远写集中目录。状态文件始终在集中目录。
 | output/.transcribed.json | 录音是否已转录 | 路径 + 大小 + mtime |
 | 名字.source.json | 字幕来自哪个视频 | 字幕文件同级 |
 | gui_settings.json | 窗口偏好（主题、托盘、最近选择） | — |

@@ -48,6 +48,17 @@ from src.srt_daemon.logger import setup_logging
 
 # Every colour is a (light, dark) tuple: customtkinter switches them
 # automatically when the appearance mode changes.
+# Notebook location choices shown on the settings page.
+OUTPUT_LOCATIONS = ("集中目录（output/）", "与源文件同目录")
+OUTPUT_LOCATION_LABELS = {
+    "central": OUTPUT_LOCATIONS[0],
+    "source": OUTPUT_LOCATIONS[1],
+}
+OUTPUT_LOCATION_VALUES = {
+    OUTPUT_LOCATIONS[0]: "central",
+    OUTPUT_LOCATIONS[1]: "source",
+}
+
 BG = ("#F4F5F7", "#161A20")
 SIDEBAR = ("#FFFFFF", "#1C2128")
 CARD = ("#FFFFFF", "#1C2128")
@@ -157,6 +168,7 @@ class App:
         self._once_file: str = ""
         self._once_launched = False
         self._once_watch_profile = "auto"
+        self._source_dirs: list[str] = []
         self._notes_cache: list[tuple[str, str, Path]] = []
         self._tray_icon: Any = None
 
@@ -733,6 +745,10 @@ class App:
         self.set_output_var = ctk.StringVar()
         self._settings_row(paths.body, "监听目录", self.set_watch_var, "选择…", self._browse_watch)
         self._settings_row(paths.body, "输出目录", self.set_output_var, "选择…", self._browse_output)
+        self.set_output_mode_var = ctk.StringVar()
+        self._settings_combo(
+            paths.body, "保存位置", self.set_output_mode_var, OUTPUT_LOCATIONS
+        )
 
         ai = Card(scroller, "AI")
         ai.pack(fill="x", pady=(0, 12))
@@ -920,6 +936,9 @@ class App:
 
             self.set_watch_var.set(str(self.cfg.watch_dir))
             self.set_output_var.set(str(self.cfg.output_dir))
+            self.set_output_mode_var.set(
+                OUTPUT_LOCATION_LABELS.get(self.cfg.output_mode, OUTPUT_LOCATIONS[0])
+            )
             self.ai_model_var.set(self.cfg.ai_model)
             self.set_profile_var.set(self.settings.last_profile)
             self.set_model_var.set(self.cfg.transcribe_model)
@@ -988,6 +1007,11 @@ class App:
             if path.exists():
                 set_config_value(path, "watch", "directory", self.set_watch_var.get().strip())
                 set_config_value(path, "output", "directory", self.set_output_var.get().strip())
+                location = self.set_output_mode_var.get()
+                set_config_value(
+                    path, "output", "mode",
+                    OUTPUT_LOCATION_VALUES.get(location, "central"),
+                )
                 set_config_value(path, "ai", "model", self.ai_model_var.get())
                 set_config_value(path, "transcribe", "model", self.set_model_var.get())
                 set_config_value(path, "transcribe", "device", self.set_device_var.get())
@@ -1129,6 +1153,11 @@ class App:
         # Immediate feedback: the job takes tens of seconds.
         self._once_launched = True
         self._once_watch_profile = profile
+        folders = getattr(self, "_source_dirs", [])
+        parent = str(Path(chosen).parent)
+        if parent not in folders:
+            folders.append(parent)
+            self._source_dirs = folders[-20:]
         self.once_status.configure(
             text=f"正在生成：{Path(chosen).name}"
             "（读取字幕 → 调用 AI → 插入截图，约 30–60 秒）",
@@ -1260,19 +1289,39 @@ class App:
             self._status_text = error
             self._append_log(f"[监听] 异常: {error}\n")
 
+    def _note_roots(self) -> list[Path]:
+        """Folders that may hold notes for this session."""
+        roots = [Path(self.cfg.output_dir)]
+        if getattr(self.cfg, "output_mode", "central") == "source":
+            roots.append(Path(self.cfg.watch_dir))
+            for extra in getattr(self, "_source_dirs", []):
+                candidate = Path(extra)
+                if candidate not in roots:
+                    roots.append(candidate)
+        return roots
+
+    def _recent_notes(self, limit: int = 20) -> list[Path]:
+        """Newest notes across every folder this app may write to."""
+        seen: list[Path] = []
+        for root in self._note_roots():
+            try:
+                # Notes live one folder below the root: <root>/<basename>/<note>.md
+                found = list(root.glob("*/*.md"))
+            except OSError:
+                continue
+            seen.extend(found)
+        try:
+            seen.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+        except OSError:
+            pass
+        return seen[:limit]
+
     def _refresh_outputs(self) -> None:
         """Rebuild the recent-notes list from the output directory."""
         frame = getattr(self, "notes_frame", None)
         if frame is None:
             return
-        try:
-            notes = sorted(
-                Path(self.cfg.output_dir).rglob("*.md"),
-                key=lambda item: item.stat().st_mtime,
-                reverse=True,
-            )[:20]
-        except OSError:
-            notes = []
+        notes = self._recent_notes()
         for child in frame.winfo_children():
             child.destroy()
         if not notes:
@@ -1344,16 +1393,8 @@ class App:
         code = job.exit_code if job is not None else None
         if code == 0:
             bar.set(1)
-            newest = ""
-            try:
-                notes = sorted(
-                    Path(self.cfg.output_dir).rglob("*.md"),
-                    key=lambda item: item.stat().st_mtime,
-                    reverse=True,
-                )
-                newest = notes[0].name if notes else ""
-            except OSError:
-                newest = ""
+            notes = self._recent_notes(1)
+            newest = notes[0].name if notes else ""
             label.configure(
                 text=f"完成：{newest}" if newest else "完成（输出目录里还没有笔记）",
                 text_color=OK,
