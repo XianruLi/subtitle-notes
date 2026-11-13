@@ -184,6 +184,16 @@ def write_note(
         target_dir.mkdir(parents=True, exist_ok=True)
         for image in images:
             shutil.move(str(image), str(target_dir / image.name))
+        # Re-generating a note can pick different timestamps; any shot left over
+        # from the previous run would be an orphan nobody references.
+        keep = {image.name for image in images}
+        for stale in target_dir.glob("shot-*.jpg"):
+            if stale.name not in keep:
+                try:
+                    stale.unlink()
+                    log.info("Removed stale screenshot %s", stale.name)
+                except OSError:
+                    pass
         log.info("Embedded %d screenshot(s) into %s", len(images), output_path.parent.name)
 
     if staging is not None:
@@ -292,6 +302,26 @@ def generate_notes(
         len(parsed.entries),
     )
 
+    # Picture for [[screenshot:...]] markers, in order of preference:
+    #   1. an explicitly supplied video (URL fetch / GUI),
+    #   2. the sidecar written when the subtitle was transcribed from a video,
+    #   3. a video next to the subtitle with the same name.
+    # Resolve this *before* the API call: telling the model that a video exists
+    # and will really be rendered is what makes it emit markers at all.
+    if video_path is None:
+        video_path = find_source_video(path)
+    if video_path is None:
+        video_path = find_sibling_video(path)
+        if video_path is not None:
+            log.info("Using the sibling video for screenshots: %s", video_path.name)
+    has_video = video_path is not None and config.screenshots_enabled
+    log.info(
+        "Screenshots: enabled=%s  video=%s  asking model for markers=%s",
+        config.screenshots_enabled,
+        video_path.name if video_path is not None else "(none)",
+        has_video,
+    )
+
     client = AiClient(config, profile=profile)
     markdown = client.process(
         parsed.text,
@@ -299,18 +329,8 @@ def generate_notes(
         profile=profile,
         speaker=speaker,
         source_format=parsed.format_label,
+        has_video=has_video,
     )
-
-    # Picture for [[screenshot:...]] markers, in order of preference:
-    #   1. an explicitly supplied video (URL fetch / GUI),
-    #   2. the sidecar written when the subtitle was transcribed from a video,
-    #   3. a video next to the subtitle with the same name.
-    if video_path is None:
-        video_path = find_source_video(path)
-    if video_path is None:
-        video_path = find_sibling_video(path)
-        if video_path is not None:
-            log.info("Using the sibling video for screenshots: %s", video_path.name)
 
     metadata: dict[str, Any] = {
         "format": parsed.format_label,

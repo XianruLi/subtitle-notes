@@ -330,3 +330,36 @@ class TestLanguageSuffixedNames:
         (tmp_path / "lecture2.mp4").write_bytes(b"x")
 
         assert find_sibling_video(subtitle) is None
+
+class TestScreenshotHint:
+    """The model is told a video exists, which is what makes it emit markers."""
+
+    def _run(self, temp_config, subtitle, *, screenshots: bool):
+        temp_config._data["screenshots"] = {"enabled": screenshots, "max_count": 2}
+        subtitle.write_text(
+            "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nhello\n", encoding="utf-8"
+        )
+        with patch(
+            "src.srt_daemon.ai_client.AiClient.process", return_value="body"
+        ) as process, patch(
+            "src.srt_daemon.ai_client.AiClient.classify_profile", return_value=None
+        ):
+            generate_notes(temp_config, subtitle)
+        return process.call_args.kwargs.get("has_video")
+
+    def test_true_when_a_sibling_video_exists(self, temp_config) -> None:
+        subtitle = temp_config.watch_dir / "talk.vtt"
+        (temp_config.watch_dir / "talk.mp4").write_bytes(b"x")
+
+        assert self._run(temp_config, subtitle, screenshots=True) is True
+
+    def test_false_without_a_video(self, temp_config) -> None:
+        subtitle = temp_config.watch_dir / "talk.vtt"
+
+        assert self._run(temp_config, subtitle, screenshots=True) is False
+
+    def test_false_when_screenshots_are_off(self, temp_config) -> None:
+        subtitle = temp_config.watch_dir / "talk.vtt"
+        (temp_config.watch_dir / "talk.mp4").write_bytes(b"x")
+
+        assert self._run(temp_config, subtitle, screenshots=False) is False

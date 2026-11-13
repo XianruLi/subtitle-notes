@@ -39,6 +39,8 @@ from src.srt_daemon.gui import (
     set_autostart,
     set_config_value,
 )
+from src.srt_daemon.config import load_config
+from src.srt_daemon.logger import setup_logging
 
 # ---------------------------------------------------------------------------
 # Palette (light theme; customtkinter tuples keep a dark variant ready)
@@ -177,7 +179,10 @@ class App:
         self.root.after(400, self._tick)
         if start_hidden:
             self.root.after(200, self._hide_window)
-        elif self.settings.start_watcher_on_launch:
+        # Auto-starting the watcher must not depend on the window being visible:
+        # the tray/autostart path (--tray) starts hidden, and that is exactly
+        # when background monitoring is wanted.
+        if self.settings.start_watcher_on_launch:
             self.root.after(600, self.start_watching)
 
     def _initial_geometry(self) -> str:
@@ -1334,11 +1339,35 @@ class App:
             pass
 
 
+def _setup_logging(config_path: Optional[str]) -> None:
+    """Send the GUI's own logging to the same file the CLI uses.
+
+    Without this the windowed build has no console, so everything the watcher
+    thread logs (screenshots, notes, failures) was silently discarded.
+    """
+    try:
+        config = load_config(config_path)
+    except Exception:  # noqa: BLE001 - the App reports config problems itself
+        return
+    try:
+        setup_logging(
+            log_file=config.log_file,
+            level=config.log_level,
+            fmt=config.log_format,
+            date_format=config.log_date_format,
+            rotation=config.log_rotation,
+            backup_count=config.log_backup_count,
+        )
+    except Exception:  # noqa: BLE001 - never block the window on logging
+        pass
+
+
 def main(config_path: Optional[str] = None, start_hidden: bool = False) -> None:
     """Open the modern window (or start hidden in the tray)."""
     import sys
 
     enable_dpi_awareness()
+    _setup_logging(config_path)
     try:
         app = App(config_path=config_path, start_hidden=start_hidden)
     except Exception as exc:  # noqa: BLE001 - startup errors must be visible

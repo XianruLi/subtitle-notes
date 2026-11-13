@@ -172,6 +172,7 @@ class AiClient:
         profile: Optional[Profile] = None,
         speaker: Optional[SpeakerInfo] = None,
         source_format: Optional[str] = None,
+        has_video: bool = False,
     ) -> str:
         """Process subtitle text and return the requested Markdown document.
 
@@ -188,6 +189,8 @@ class AiClient:
                 profile this client was constructed with.
             speaker: Speaker analysis of the transcript — drives the
                 "use these exact labels" / "inference only" instruction.
+            has_video: True when a video is on disk for screenshots, so the
+                model is told that picture markers will actually be rendered.
             source_format: Subtitle format label (``SRT`` / ``VTT``).
 
         Returns:
@@ -204,7 +207,7 @@ class AiClient:
         profile = profile or self._profile
         system_prompt = self._system_prompt_for(profile)
         context = self._build_context_block(
-            filename, profile, speaker, source_format
+            filename, profile, speaker, source_format, has_video=has_video
         )
 
         subtitle_count = self._count_subtitles(text)
@@ -694,6 +697,7 @@ class AiClient:
         profile: Optional[Profile],
         speaker: Optional[SpeakerInfo],
         source_format: Optional[str],
+        has_video: bool = False,
     ) -> str:
         """Build the per-file context block used by every API call.
 
@@ -730,6 +734,15 @@ class AiClient:
             )
             if instruction:
                 lines.append(instruction)
+        if has_video:
+            lines.append(
+                "**Screenshots available**: a video of this recording is on disk "
+                "so the markers below will really be rendered as images. Emit 3-8 "
+                "[[screenshot:HH:MM:SS]] markers on their own lines at the moments "
+                "that show something visual (slides, code, diagrams, "
+                "demonstrations, hardware, on-screen text). Copy every timestamp "
+                "exactly from the subtitle; never invent one."
+            )
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
