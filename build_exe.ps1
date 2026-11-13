@@ -20,10 +20,10 @@ if (-not (Test-Path $exe)) { throw "Build output missing: $exe" }
 Write-Host '[2/3] Assembling the portable folder...'
 Copy-Item (Join-Path $root 'src\srt_daemon\config.yaml') (Join-Path $dist 'config.yaml') -Force
 Copy-Item (Join-Path $root '.env.example') (Join-Path $dist '.env.example') -Force -ErrorAction SilentlyContinue
-if (Test-Path (Join-Path $root '.env')) {
-    Copy-Item (Join-Path $root '.env') (Join-Path $dist '.env') -Force
-    Write-Host '      .env copied (contains your API key - do not share this folder)'
-}
+# NOTE: .env is deliberately NOT copied into the packaged folder - the release
+# zip must never contain the builder's API key.  A bundled app reads the .env
+# from its data root (the checkout for a dev build), so no copy is needed.
+# (no .env copy on purpose: see the note above)
 New-Item -ItemType Directory -Force -Path (Join-Path $dist 'doc') | Out-Null
 Copy-Item (Join-Path $root 'doc\prompts') (Join-Path $dist 'doc') -Recurse -Force
 if (Test-Path (Join-Path $root 'models')) {
@@ -33,7 +33,10 @@ foreach ($folder in @('output', 'logs')) {
     New-Item -ItemType Directory -Force -Path (Join-Path $dist $folder) | Out-Null
 }
 $guide = Join-Path $root 'doc\GUI.md'
-if (Test-Path $guide) { Copy-Item $guide (Join-Path $dist '使用说明.md') -Force }
+# Built from code points: PowerShell 5.1 reads this file as GBK when it has no
+# BOM, which used to mangle a literal Chinese file name into a mojibake twin.
+$guideName = (-join ([char]0x4F7F, [char]0x7528, [char]0x8BF4, [char]0x660E)) + '.md'
+if (Test-Path $guide) { Copy-Item $guide (Join-Path $dist $guideName) -Force }
 
 Write-Host '[3/3] Running the packaged self-test...'
 Start-Process -FilePath $exe -ArgumentList '--selftest' -Wait -NoNewWindow
