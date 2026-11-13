@@ -64,6 +64,16 @@ class AiClientError(Exception):
     """
 
 
+class RetryableAiError(AiClientError):
+    """A call that technically succeeded but produced nothing usable.
+
+    Observed in practice: the API returns HTTP 200 with an empty message body
+    (for example when the model spends its whole budget and finishes with
+    finish_reason=length). Treating that as success wrote a note with a header
+    and no body, so it is retried like a transient failure instead.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -873,6 +883,18 @@ class AiClient:
                         f"API client error (HTTP {status}): {e}"
                     ) from e
 
+            except RetryableAiError as e:
+                # Empty or incomplete answer from the model — retry with backoff.
+                last_error = e
+                if attempt >= total_attempts:
+                    break
+                delay = self._backoff_delay(base_delay, attempt)
+                log.warning(
+                    "Empty response (attempt %d/%d), retrying in %.1fs: %s",
+                    attempt, total_attempts, delay, e,
+                )
+                time.sleep(delay)
+
             except APIError as e:
                 # Catch-all for any other OpenAI / DeepSeek SDK error
                 last_error = e
@@ -958,11 +980,27 @@ class AiClient:
         response = self._client.chat.completions.create(**params)
 
         # Extract the assistant's text response
-        result = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        result = choice.message.content or ""
+        finish_reason = getattr(choice, "finish_reason", None)
+
+        if not result.strip():
+            # An empty answer is a failure, not a result: it used to write a
+            # note whose body was empty. Retry it like a transient error.
+            usage = getattr(response, "usage", None)
+            log.warning(
+                "API returned an empty response (finish_reason=%s, "
+                "completion_tokens=%s) — retrying",
+                finish_reason,
+                getattr(usage, "completion_tokens", "?"),
+            )
+            raise RetryableAiError(
+                f"empty response from the model (finish_reason={finish_reason})"
+            )
 
         log.debug(
-            "API call OK: %d chars input → %d chars output",
-            len(user_message), len(result),
+            "API call OK: %d chars input → %d chars output (finish_reason=%s)",
+            len(user_message), len(result), finish_reason,
         )
         return result
 

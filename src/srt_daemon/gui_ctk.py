@@ -155,6 +155,8 @@ class App:
         self._status_text = ""
         self._transcribe_files: list[str] = []
         self._once_file: str = ""
+        self._once_launched = False
+        self._once_watch_profile = "auto"
         self._notes_cache: list[tuple[str, str, Path]] = []
         self._tray_icon: Any = None
 
@@ -508,6 +510,21 @@ class App:
             wraplength=760,
             justify="left",
         ).pack(anchor="w", pady=(6, 0))
+
+        # Progress for this card: generating a note takes ~30-60 s (AI call +
+        # frames), so the button must never look like it ignored the click.
+        progress = ctk.CTkFrame(local.body, fg_color="transparent")
+        progress.pack(fill="x", pady=(8, 0))
+        self.once_status = ctk.CTkLabel(
+            progress, text="", font=_font(12), text_color=MUTED, anchor="w"
+        )
+        self.once_status.pack(fill="x")
+        self.once_bar = ctk.CTkProgressBar(
+            progress, height=6, corner_radius=3,
+            fg_color=ACCENT_SOFT, progress_color=ACCENT,
+        )
+        self.once_bar.pack(fill="x", pady=(6, 0))
+        self.once_bar.set(0)
 
         media = Card(page, "音频 / 视频 → 字幕")
         media.pack(fill="x", pady=(0, 20))
@@ -1107,7 +1124,18 @@ class App:
             chosen = picked
         profile = self.once_profile_var.get()
         extra = [] if profile == "auto" else ["--profile", profile]
-        self._start_job("once", ["--once", chosen, *extra])
+        if not self._start_job("once", ["--once", chosen, *extra]):
+            return
+        # Immediate feedback: the job takes tens of seconds.
+        self._once_launched = True
+        self._once_watch_profile = profile
+        self.once_status.configure(
+            text=f"正在生成：{Path(chosen).name}"
+            "（读取字幕 → 调用 AI → 插入截图，约 30–60 秒）",
+            text_color=ACCENT,
+        )
+        self.once_bar.set(0)
+        self.once_bar.start()
 
     # -- transcription --------------------------------------------------------
 
@@ -1302,12 +1330,49 @@ class App:
             self._append_log(f"[任务] {key} 结束 (exit={job.exit_code})\n")
             self._last_notes_refresh = 0.0
 
+    def _update_once_progress(self) -> None:
+        """Mirror the single-file job on the new-task card."""
+        label = getattr(self, "once_status", None)
+        bar = getattr(self, "once_bar", None)
+        if label is None or bar is None or not self._once_launched:
+            return
+        job = self.jobs.get("once")
+        if job is not None and job.running:
+            return
+        self._once_launched = False
+        bar.stop()
+        code = job.exit_code if job is not None else None
+        if code == 0:
+            bar.set(1)
+            newest = ""
+            try:
+                notes = sorted(
+                    Path(self.cfg.output_dir).rglob("*.md"),
+                    key=lambda item: item.stat().st_mtime,
+                    reverse=True,
+                )
+                newest = notes[0].name if notes else ""
+            except OSError:
+                newest = ""
+            label.configure(
+                text=f"完成：{newest}" if newest else "完成（输出目录里还没有笔记）",
+                text_color=OK,
+            )
+            self._last_notes_refresh = 0.0
+        else:
+            bar.set(0)
+            label.configure(
+                text=f"失败（退出码 {code}）— 切到「日志」页看原因",
+                text_color=ERR,
+            )
+
     def _tick(self) -> None:
         if self._quitting:
             return
         self._ticks += 1
         try:
             self._drain_jobs()
+            self._update_once_progress()
             if self._ticks % 2 == 0:
                 self._refresh_status()
                 new_text = self._log_tail.read_new()

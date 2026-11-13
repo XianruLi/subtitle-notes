@@ -139,3 +139,63 @@ def test_once_card_keeps_the_full_path_and_type(
     finally:
         app._quitting = True
         app.root.destroy()
+
+def test_once_progress_shows_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from src.srt_daemon.gui_ctk import App
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    settings = tmp_path / "gui_settings.json"
+    GuiSettings(start_watcher_on_launch=False, minimize_to_tray=False).save(settings)
+    monkeypatch.setattr(App, "_gui_settings_path", lambda self: settings)
+    monkeypatch.setattr(App, "_init_tray", lambda self: None)
+
+    app = App(start_hidden=True)
+    try:
+        app._once_launched = True
+        app.jobs["once"] = SimpleNamespace(running=False, exit_code=0)
+
+        app._update_once_progress()
+
+        text = app.once_status.cget("text")
+        assert "完成" in text
+
+        app._once_launched = True
+        app.jobs["once"] = SimpleNamespace(running=False, exit_code=1)
+
+        app._update_once_progress()
+
+        assert "失败" in app.once_status.cget("text")
+    finally:
+        app._quitting = True
+        app.root.destroy()
+
+
+def test_once_progress_keeps_running_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from src.srt_daemon.gui_ctk import App
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    settings = tmp_path / "gui_settings.json"
+    GuiSettings(start_watcher_on_launch=False, minimize_to_tray=False).save(settings)
+    monkeypatch.setattr(App, "_gui_settings_path", lambda self: settings)
+    monkeypatch.setattr(App, "_init_tray", lambda self: None)
+
+    app = App(start_hidden=True)
+    try:
+        app._once_launched = True
+        app.jobs["once"] = SimpleNamespace(running=True, exit_code=None)
+
+        app._update_once_progress()
+
+        assert app._once_launched is True
+        assert app.once_status.cget("text") == ""
+    finally:
+        app._quitting = True
+        app.root.destroy()
