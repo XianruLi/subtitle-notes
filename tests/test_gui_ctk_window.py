@@ -106,3 +106,36 @@ def test_transcribe_args_carry_profile_and_notes(
     finally:
         app._quitting = True
         app.root.destroy()
+
+def test_once_card_keeps_the_full_path_and_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Picking a subtitle outside the project must not degrade to a bare name."""
+    from src.srt_daemon.gui_ctk import App
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    settings = tmp_path / "gui_settings.json"
+    GuiSettings(start_watcher_on_launch=False, minimize_to_tray=False).save(settings)
+    monkeypatch.setattr(App, "_gui_settings_path", lambda self: settings)
+    monkeypatch.setattr(App, "_init_tray", lambda self: None)
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        App, "_start_job", lambda self, key, args: captured.update(key=key, args=args) or True
+    )
+
+    app = App(start_hidden=True)
+    try:
+        somewhere = str(tmp_path / "projects" / "访谈项目" / "talk.srt")
+        app._once_file = somewhere
+        app.once_profile_var.set("interview")
+
+        app._run_once_selected()
+
+        assert captured["key"] == "once"
+        args = captured["args"]
+        assert somewhere in args
+        assert args[args.index("--profile") + 1] == "interview"
+    finally:
+        app._quitting = True
+        app.root.destroy()

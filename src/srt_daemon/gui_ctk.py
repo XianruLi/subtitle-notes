@@ -154,6 +154,7 @@ class App:
         self._last_notes_refresh = 0.0
         self._status_text = ""
         self._transcribe_files: list[str] = []
+        self._once_file: str = ""
         self._notes_cache: list[tuple[str, str, Path]] = []
         self._tray_icon: Any = None
 
@@ -480,6 +481,33 @@ class App:
             height=34, corner_radius=9, fg_color=ACCENT, hover_color=ACCENT_HOVER,
             font=_font(12, "bold"),
         ).pack(side="left")
+
+        once_options = ctk.CTkFrame(local.body, fg_color="transparent")
+        once_options.pack(fill="x", pady=(10, 0))
+        self.once_profile_var = ctk.StringVar(value=self.settings.last_profile)
+        ctk.CTkLabel(
+            once_options, text="笔记类型", font=_font(11), text_color=MUTED
+        ).pack(side="left")
+        ctk.CTkComboBox(
+            once_options, values=list(PROFILE_CHOICES), variable=self.once_profile_var,
+            width=130, height=32, state="readonly", fg_color=INPUT_BG,
+            border_color=BORDER, button_color=BORDER, font=_font(12),
+        ).pack(side="left", padx=(6, 16))
+        ctk.CTkLabel(
+            once_options,
+            text="同目录同名视频会自动用于截图（如 talk.mp4 + talk.srt）",
+            font=_font(11),
+            text_color=MUTED,
+        ).pack(side="left")
+        ctk.CTkLabel(
+            local.body,
+            text="字幕没有音频，无法做说话人聚类：想区分说话人请把音视频丢到下面的"
+            "「音频 / 视频 → 字幕」并填说话人数。",
+            font=_font(10),
+            text_color=MUTED,
+            wraplength=760,
+            justify="left",
+        ).pack(anchor="w", pady=(6, 0))
 
         media = Card(page, "音频 / 视频 → 字幕")
         media.pack(fill="x", pady=(0, 20))
@@ -1059,20 +1087,27 @@ class App:
             title="选择字幕文件", filetypes=[("Subtitles", "*.srt *.vtt"), ("All", "*.*")]
         )
         if chosen:
+            # Keep the full path: the job runs with the project root as cwd, so
+            # a bare file name would point at the wrong folder.
+            self._once_file = chosen
             self.once_label.configure(text=Path(chosen).name, text_color=TEXT)
 
     def _run_once_selected(self) -> None:
-        name = self.once_label.cget("text")
-        if not name or name == "未选择文件":
+        chosen = getattr(self, "_once_file", "")
+        if not chosen:
             from tkinter import filedialog
 
-            chosen = filedialog.askopenfilename(
+            picked = filedialog.askopenfilename(
                 title="选择字幕文件", filetypes=[("Subtitles", "*.srt *.vtt")]
             )
-            if not chosen:
+            if not picked:
                 return
-            name = chosen
-        self._start_job("once", ["--once", str(name), *self._job_args_profile()])
+            self._once_file = picked
+            self.once_label.configure(text=Path(picked).name, text_color=TEXT)
+            chosen = picked
+        profile = self.once_profile_var.get()
+        extra = [] if profile == "auto" else ["--profile", profile]
+        self._start_job("once", ["--once", chosen, *extra])
 
     # -- transcription --------------------------------------------------------
 

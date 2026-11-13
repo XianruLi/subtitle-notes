@@ -403,3 +403,41 @@ class TestWatchIgnoresRecordingsWhenOff:
             watcher._process_file(subtitle)
 
         assert list(temp_config.output_dir.rglob("*.md"))
+
+class TestSubtitleOutsideTheWatchDir:
+    @needs_ffmpeg
+    def test_sibling_video_next_to_a_project_subtitle(
+        self, temp_config: Config, tmp_path: Path
+    ) -> None:
+        """A bilibili video+subtitle pair in a project folder still gets shots."""
+        temp_config._data["screenshots"] = {
+            "enabled": True,
+            "max_count": 2,
+            "width": 0,
+            "quality": 5,
+            "best_frame_window": 0,
+        }
+        prompts = Path(__file__).resolve().parent.parent / "doc" / "prompts"
+        temp_config._data.setdefault("ai", {})["profiles"] = {
+            name: {"prompt_file": str(prompts / f"{name}.md")}
+            for name in ("course", "meeting", "interview")
+        }
+        project = tmp_path / "projects" / "收纳"
+        project.mkdir(parents=True)
+        subtitle = project / "talk.srt"
+        subtitle.write_text(
+            "1\n00:00:01,000 --> 00:00:03,000\nhello there\n", encoding="utf-8"
+        )
+        make_video(project / "talk.mp4", 6)
+
+        with patch(
+            "src.srt_daemon.ai_client.AiClient.process",
+            return_value="body\n\n[[screenshot:00:00:02]]\n",
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.classify_profile", return_value=None
+        ):
+            result = generate_notes(temp_config, subtitle, forced_profile="interview")
+
+        text = result.output_path.read_text(encoding="utf-8")
+        assert "![](images/" in text
+        assert "profile: interview" in text
