@@ -39,8 +39,9 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 
 - 有 NVIDIA 显卡（30/40/50 系）：装 **CUDA 12.x + cuDNN 9** 后不用改配置，
   `device: auto` 会自动用 GPU；没装也能跑（自动回退 CPU）。
-- 只有 CPU：默认模型 `large-v3` 比较慢，超过 30 分钟的录音会自动降级到 `medium`，
-  也可以在 `config.yaml` 里把 `transcribe.model` 改成 `small`。
+- 只有 CPU：默认模型 `large-v3` 比较慢，可以在 `config.yaml` 里把
+  `transcribe.model` 改成 `small` / `medium`；也可以打开
+  `transcribe.long_media` 让超长录音自动换快模型（**默认关闭**）。
 
 ## 能做什么
 
@@ -48,7 +49,8 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
   并处理说话人（谁说的）
 - **本地视频 / 录音**：把 `.mp4` `.mkv` `.mp3` 丢进同一个目录，自动转录（本地 whisper +
   说话人聚类）再出笔记
-- **截图**：AI 在"必须看到画面"的地方输出标记，程序用 ffmpeg 从视频抽帧插入笔记
+- **截图**：AI 在"必须看到画面"的地方输出标记，程序用 ffmpeg 从视频抽帧插入笔记；
+  默认保持原片分辨率（1080p → 1920×1080），并在标记后 0–6 秒内自动挑内容最丰富的一帧
 - **在线视频（可选）**：B站 / YouTube / 抖音 链接直接出笔记，优先用平台字幕
 - **桌面 GUI**：五个页面、深色模式、系统托盘、开机自启
 - **EXE**：一键打包成单文件夹便携版，双击即用
@@ -103,8 +105,9 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 | medium | 769M | 约 1.1× | 快 |
 | large-v3 | 1550M | 约 2.5× | 快 10–30 倍 |
 
-**长音频自动降级**：超过 30 分钟且没有显式指定模型时，自动从 `large-v3` 换成 `medium`
-（日志会写 `Long recording ... switching model`）。改阈值或关闭：
+**长音频自动降级（可选，默认关闭）**：打开后超过 30 分钟且没有显式指定模型时，
+自动从 `large-v3` 换成 `medium`（日志会写 `Long recording ... switching model`）。
+默认 `enabled: false`，也就是无论多长都用你配置的模型：
 
 ```yaml
 transcribe:
@@ -114,7 +117,7 @@ transcribe:
     model: "medium"
 ```
 
-想全程用 large-v3：把 `enabled` 设成 `false`，或命令里显式 `--model large-v3`。
+关闭时行为就是"永远用配置的模型"；命令里显式 `--model` 永远优先于这套策略。
 
 ## GPU 加速（RTX 30/40/50 系列）
 
@@ -214,7 +217,7 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 
 **笔记不生成**：看日志页 —— 常见是 API Key 没填、ffmpeg 不在 PATH、字幕没有可解析内容。
 
-**转录太慢**：换 `medium`/`small`，或开 GPU；长音频会自动降级。
+**转录太慢**：换 `medium`/`small`，或开 GPU；也可以打开长音频自动降级。
 
 **GPU 加载失败**：确认 CUDA 12 + cuDNN 9 已装、驱动够新；不改也能自动回退 CPU。
 

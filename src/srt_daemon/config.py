@@ -318,7 +318,7 @@ class Config:
     @property
     def transcribe_long_media_enabled(self) -> bool:
         """Use a faster model automatically for long recordings."""
-        return bool(self.transcribe_long_media_settings.get("enabled", True))
+        return bool(self.transcribe_long_media_settings.get("enabled", False))
 
     @property
     def transcribe_long_media_threshold_minutes(self) -> float:
@@ -481,8 +481,13 @@ class Config:
 
     @property
     def screenshots_width(self) -> int:
-        """Rendered image width in pixels."""
-        return int(self.screenshots_settings.get("width", 1280))
+        """Rendered image width in pixels (0 = keep the source resolution)."""
+        return int(self.screenshots_settings.get("width", 0))
+
+    @property
+    def screenshots_best_frame_window(self) -> int:
+        """Seconds to search after a marker for the most detailed frame."""
+        return int(self.screenshots_settings.get("best_frame_window", 6))
 
     @property
     def screenshots_quality(self) -> int:

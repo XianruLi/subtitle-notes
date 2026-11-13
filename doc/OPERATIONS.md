@@ -385,6 +385,7 @@ transcribe:
     model: "medium"
 ```
 
+默认**关闭**（无论多长都用配置模型）。打开 `long_media.enabled: true` 后，
 超过 30 分钟且**没有显式** --model 时自动换 medium，日志会写：
 
 ```text
@@ -448,7 +449,8 @@ python -m src.srt_daemon.fetch --screenshots "<url>"
 screenshots:
   enabled: true
   max_count: 12
-  width: 1280
+  width: 0                 # 0 = 原始分辨率（1080p → 1920×1080）
+  best_frame_window: 6     # 标记后 0–6 秒内自动挑内容最丰富的一帧
   quality: 3
 ```
 

@@ -147,8 +147,8 @@ flowchart TD
     A["transcribe 源文件"] --> B{"状态说已转录?"}
     B -->|"是 且未指定 --force"| X["跳过"]
     B -->|"否"| C["长音频策略"]
-    C --> C1{"时长 ≥ long_media.threshold 30min 且未显式 --model?"}
-    C1 -->|"是"| C2["改用 long_media.model 默认 medium"]
+    C --> C1{"long_media.enabled 且 时长 ≥ 阈值 且未显式 --model?"}
+    C1 -->|"是（可选，默认关闭）"| C2["改用 long_media.model 默认 medium"]
     C1 -->|"否"| C3["用配置模型 large-v3"]
 
     C2 --> D["_ensure_asr 设备尝试链"]
@@ -223,7 +223,7 @@ flowchart TD
     V2 --> V3["3 同目录同名字幕对应的视频 lecture.en.vtt ↔ lecture.mp4"]
 
     V3 --> D{"拿到视频?"}
-    D -->|"是"| E["ffmpeg -ss 时间 -frames:v 1 scale=宽度"]
+    D -->|"是"| E["ffmpeg -ss 时间 -frames:v 1（width: 0 → 原始分辨率）"]
     E --> F["images/shot-HHMMSS.jpg"]
     F --> G["标记替换为 ![](images/shot-HHMMSS.jpg)"]
     D -->|"否"| H["静默删除标记 不留占位符"]
@@ -231,7 +231,14 @@ flowchart TD
     H --> I
 ```
 
+**挑帧策略**：模型标的是"讲到这里"的时间戳，画面往往晚 1–3 秒出现，
+可能正好落在转场或黑屏上。所以每个标记会向后取 0/2/4/6/8 秒几帧（
+screenshots.best_frame_window，默认 6 秒），用灰度标准差挑**内容最丰富**的一帧
+（黑帧、淡入、空白幻灯片分数低），其余删掉；最终文件名仍按标记时间命名。
+
 截图失败（时间点超出视频、ffmpeg 报错）时同样是删除标记，绝不留下坏图。
+分辨率由 screenshots.width 控制：**0 = 保持原片分辨率**（1080p 就是 1920×1080），
+设成正数则等比缩放到该宽度。
 
 ---
 

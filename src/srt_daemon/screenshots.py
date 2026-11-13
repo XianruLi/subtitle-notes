@@ -91,7 +91,7 @@ def extract_frame(
     seconds: int,
     target: Path,
     *,
-    width: int = 1280,
+    width: int = 0,
     quality: int = 3,
 ) -> bool:
     """Write one frame of *video* at *seconds* to *target* (JPEG).
@@ -101,7 +101,8 @@ def extract_frame(
         video: Video file to read.
         seconds: Timestamp of the frame.
         target: Destination image path.
-        width: Output width in pixels (height keeps the aspect ratio).
+        width: Output width in pixels; 0 keeps the source resolution
+            (height always keeps the aspect ratio).
         quality: ffmpeg -q:v value (2 = best, 31 = worst).
 
     Returns:
@@ -120,12 +121,11 @@ def extract_frame(
         str(video),
         "-frames:v",
         "1",
-        "-vf",
-        f"scale={width}:-2",
-        "-q:v",
-        str(quality),
-        str(target),
     ]
+    if width > 0:
+        command += ["-vf", f"scale={width}:-2"]
+    command += ["-q:v", str(quality), str(target)]
+
     try:
         result = subprocess.run(
             command, capture_output=True, text=True, timeout=120
@@ -139,6 +139,81 @@ def extract_frame(
         )
         return False
     return True
+
+
+def _detail_score(path: Path) -> float:
+    """Rough "how much is going on in this picture" score.
+
+    Grayscale standard deviation: a black frame, a fade-in or a mostly empty
+    slide scores low, while code, diagrams and a person at a desk score high.
+    """
+    try:
+        from PIL import Image, ImageStat
+
+        with Image.open(path) as image:
+            return float(ImageStat.Stat(image.convert("L")).stddev[0])
+    except Exception:  # noqa: BLE001 - a scoring failure must not drop the frame
+        return 0.0
+
+
+def extract_best_frame(
+    ffmpeg: str,
+    video: Path,
+    seconds: int,
+    target: Path,
+    *,
+    width: int = 0,
+    quality: int = 3,
+    window: int = 6,
+) -> tuple[bool, int]:
+    """Extract the most informative frame within a few seconds of *seconds*.
+
+    The model marks the moment it *talks about* something visual; the picture
+    often appears a second or two later, and the literal timestamp can land on
+    a transition or a black frame.  Sampling a small window and keeping the
+    frame with the most detail removes most of the "unlucky screenshot" cases.
+
+    Args:
+        ffmpeg: Path to the ffmpeg executable.
+        video: Video file to read.
+        seconds: Timestamp requested by the model.
+        target: Final destination of the chosen frame.
+        width: Output width (0 = source resolution).
+        quality: ffmpeg -q:v value.
+        window: Seconds to search after *seconds* (0 disables the search).
+
+    Returns:
+        A tuple of (success, offset in seconds that was used).
+    """
+    if window <= 0:
+        return (
+            extract_frame(
+                ffmpeg, video, seconds, target, width=width, quality=quality
+            ),
+            0,
+        )
+
+    offsets = [offset for offset in (0, 2, 4, 6, 8) if offset <= window]
+    best: Optional[Path] = None
+    best_score = -1.0
+    best_offset = 0
+    for offset in offsets:
+        candidate = target.with_name(f"{target.stem}.cand{offset}{target.suffix}")
+        if not extract_frame(
+            ffmpeg, video, seconds + offset, candidate, width=width, quality=quality
+        ):
+            continue
+        score = _detail_score(candidate)
+        if score > best_score:
+            if best is not None:
+                best.unlink(missing_ok=True)
+            best, best_score, best_offset = candidate, score, offset
+        else:
+            candidate.unlink(missing_ok=True)
+    if best is None:
+        return False, 0
+    best.replace(target)
+    return True, best_offset
 
 
 def _image_reference(marker: Marker, prefix: str = IMAGE_DIR_NAME) -> str:
@@ -187,18 +262,28 @@ def process_markdown(
         unique.append(marker)
 
     extracted: dict[str, Marker] = {}
+    window = max(0, config.screenshots_best_frame_window)
     if video is not None and video.exists() and ffmpeg_path:
         for marker in unique:
             target = image_dir / marker.filename
-            if extract_frame(
+            ok, offset = extract_best_frame(
                 ffmpeg_path,
                 video,
                 marker.seconds,
                 target,
                 width=config.screenshots_width,
                 quality=config.screenshots_quality,
-            ):
+                window=window,
+            )
+            if ok:
                 extracted[marker.raw] = marker
+                if offset:
+                    log.info(
+                        "Frame for %s came %ds later than the marker (window %ds)",
+                        marker.filename,
+                        offset,
+                        window,
+                    )
 
     text = markdown
     for marker in markers:

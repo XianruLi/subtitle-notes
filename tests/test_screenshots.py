@@ -17,6 +17,9 @@ from src.srt_daemon.config import Config
 from src.srt_daemon.pipeline import generate_notes
 from src.srt_daemon.screenshots import (
     Marker,
+    _detail_score,
+    extract_best_frame,
+    extract_frame,
     parse_markers,
     process_markdown,
 )
@@ -221,3 +224,73 @@ class TestPipelineScreenshots:
         text = result.output_path.read_text(encoding="utf-8")
         assert "[[screenshot" not in text
         assert not (result.output_path.parent / "images").exists()
+
+class TestNativeResolution:
+    @needs_ffmpeg
+    def test_width_zero_keeps_the_source_size(self, tmp_path: Path) -> None:
+        from PIL import Image
+
+        video = make_video(tmp_path / "clip.mp4", seconds=4)
+        target = tmp_path / "shot.jpg"
+
+        ok = extract_frame(
+            shutil.which("ffmpeg"), video, 1, target, width=0, quality=5
+        )
+
+        assert ok
+        with Image.open(target) as image:
+            assert image.width == 320  # the size make_video renders
+
+    @needs_ffmpeg
+    def test_width_scales_when_asked(self, tmp_path: Path) -> None:
+        from PIL import Image
+
+        video = make_video(tmp_path / "clip.mp4", seconds=4)
+        target = tmp_path / "shot.jpg"
+
+        assert extract_frame(
+            shutil.which("ffmpeg"), video, 1, target, width=160, quality=5
+        )
+        with Image.open(target) as image:
+            assert image.width == 160
+
+
+class TestBestFrame:
+    @needs_ffmpeg
+    def test_moves_past_a_blank_leader(self, tmp_path: Path) -> None:
+        """A marker on a blank first seconds should land on real content."""
+        video = tmp_path / "clip.mp4"
+        subprocess.run(
+            [
+                "ffmpeg", "-nostdin", "-y", "-v", "error",
+                "-f", "lavfi", "-i", "color=c=black:s=320x240:d=3",
+                "-f", "lavfi", "-i", "testsrc=size=320x240:rate=5:duration=5",
+                "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0",
+                "-pix_fmt", "yuv420p", str(video),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        target = tmp_path / "shot.jpg"
+
+        ok, offset = extract_best_frame(
+            shutil.which("ffmpeg"), video, 0, target, width=0, quality=5, window=6
+        )
+
+        assert ok
+        assert offset >= 2, f"expected to skip the black leader, used offset {offset}"
+        assert _detail_score(target) > 5
+
+    @needs_ffmpeg
+    def test_window_zero_uses_the_exact_timestamp(self, tmp_path: Path) -> None:
+        video = make_video(tmp_path / "clip.mp4", seconds=6)
+        target = tmp_path / "shot.jpg"
+
+        ok, offset = extract_best_frame(
+            shutil.which("ffmpeg"), video, 2, target, window=0
+        )
+
+        assert ok and offset == 0
+
+    def test_default_window_is_six_seconds(self, shot_config: Config) -> None:
+        assert shot_config.screenshots_best_frame_window == 6

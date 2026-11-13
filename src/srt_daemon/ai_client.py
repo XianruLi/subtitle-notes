@@ -717,6 +717,14 @@ class AiClient:
             nothing to say.
         """
         lines: list[str] = []
+        if has_video:
+            lines.append(
+                "【重要】本次已提供原视频，截图标记会被真正渲染成图片。"
+                "请输出 **至少 3 个、最多 8 个** [[screenshot:HH:MM:SS]] 标记，"
+                "分别放在出现画面内容的时刻（幻灯片、代码、图表、演示操作、实物、屏幕文字）。"
+                "标记必须独占一行；时间戳必须从字幕里原样复制，不得编造。"
+                "宁可选该句靠后的时间戳——画面通常比话语晚出现。"
+            )
         if source_format:
             lines.append(f"**Subtitle format**: {source_format}")
         if profile is not None:
@@ -734,15 +742,6 @@ class AiClient:
             )
             if instruction:
                 lines.append(instruction)
-        if has_video:
-            lines.append(
-                "**Screenshots available**: a video of this recording is on disk "
-                "so the markers below will really be rendered as images. Emit 3-8 "
-                "[[screenshot:HH:MM:SS]] markers on their own lines at the moments "
-                "that show something visual (slides, code, diagrams, "
-                "demonstrations, hardware, on-screen text). Copy every timestamp "
-                "exactly from the subtitle; never invent one."
-            )
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
