@@ -147,10 +147,11 @@ transcribe:
   device: "auto"
   # cpu: int8 (fast) / float32   cuda: float16 (default) / int8_float16
   compute_type: "auto"
-  # Long recordings automatically switch to a faster model (this is what makes
-  # a 2-hour lecture bearable). Explicit --model always wins.
+  # Optional: long recordings switch to a faster model (a 2-hour lecture on
+  # large-v3 takes hours). OFF by default, so the configured model is always
+  # used. Explicit --model always wins.
   long_media:
-    enabled: true
+    enabled: false
     threshold_minutes: 30
     model: "medium"
   cpu_threads: 8
@@ -240,5 +241,6 @@ fetch:
 screenshots:
   enabled: false
   max_count: 12      # hard cap per note
-  width: 1280        # rendered width in pixels
+  width: 0           # 0 = keep the source resolution (1080p stays 1920x1080)
+  best_frame_window: 6   # look 0-6s after each marker and keep the most detailed frame
   quality: 3         # ffmpeg -q:v (2 = best, 31 = worst)
