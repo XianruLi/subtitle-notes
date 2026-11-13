@@ -136,9 +136,13 @@ transcribe:
   output_dir: "videos/"
   # Media extensions picked up when scanning a directory
   extensions: [".mp3", ".mp4", ".wav", ".m4a", ".mkv", ".mov", ".flac", ".aac", ".opus", ".wma", ".webm"]
-  # Recordings (mp4/mkv/mp3/...) dropped into the watch directory are
-  # transcribed first, then the resulting subtitle becomes a note.
-  auto_transcribe_media: true
+  # OFF by default: the watch directory only picks up subtitle files, so a
+  # long recording is never transcribed with guessed speaker count / model /
+  # content type.  Recordings go through the GUI new-task page, or:
+  #   python -m src.srt_daemon.main --transcribe meeting.mp3 --num-speakers 3
+  #       --speakers 1=张三,2=李四 --notes --profile meeting
+  # Set to true to restore the fully automatic behaviour.
+  auto_transcribe_media: false
   # faster-whisper model. Any CTranslate2 model id works, e.g.:
   #   large-v3 (best) | large-v3-turbo (fast, near-large quality) | medium | small
   #   distil-large-v3 | a HuggingFace id such as "Systran/faster-whisper-large-v3"
