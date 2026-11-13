@@ -368,7 +368,7 @@ class Config:
     @property
     def transcribe_auto_media(self) -> bool:
         """Transcribe audio/video files that land in the watch directory."""
-        return bool(self.transcribe_settings.get("auto_transcribe_media", True))
+        return bool(self.transcribe_settings.get("auto_transcribe_media", False))
 
     @property
     def transcribe_media_extensions(self) -> list[str]:

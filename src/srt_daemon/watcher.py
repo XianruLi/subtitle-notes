@@ -243,6 +243,16 @@ class FileWatcher:
         """True when *path* is a recording rather than a subtitle."""
         return path.suffix.lower() in set(self._config.transcribe_media_extensions)
 
+    def _explain_ignored_media(self, path: Path) -> None:
+        """Tell the user why a recording in the watch directory is not handled."""
+        if not self._is_media(path) or self._config.transcribe_auto_media:
+            return
+        log.info(
+            "Ignoring recording %s: auto-transcription is off. Use the GUI's "
+            "\"新建任务\" page, or run transcribe with --num-speakers/--profile.",
+            path.name,
+        )
+
     def _scan_existing(self) -> None:
         """Scan *watch_dir* for subtitle files (SRT / WebVTT) that have not
         yet been processed, and enqueue them.
@@ -308,6 +318,7 @@ class FileWatcher:
         # watchdog handler also filters, but this method may be called
         # directly in tests or via _scan_existing).
         if file_path.suffix.lower() not in self._allowed_extensions:
+            self._explain_ignored_media(file_path)
             return
 
         with self._lock:

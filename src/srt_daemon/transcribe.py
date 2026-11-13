@@ -898,12 +898,51 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                              "speakers; default from config, 0.8).")
     parser.add_argument("--speakers", default=None, metavar="MAP",
                         help='Map cluster numbers to names, e.g. "1=Alice,2=Bob".')
+    parser.add_argument(
+        "--notes",
+        action="store_true",
+        help="After transcribing, also turn each new subtitle into a note "
+        "(uses the normal notes pipeline and its screenshots).",
+    )
+    parser.add_argument(
+        "--profile",
+        default=None,
+        metavar="ID",
+        help="Content type for the notes (course/meeting/interview). "
+        "Implies --notes.",
+    )
     parser.add_argument("--format", default=None, choices=["vtt", "srt", "both"],
                         help="Subtitle format to write (default: config).")
     parser.add_argument("--output-dir", default=None, metavar="PATH",
                         help="Where to write subtitles (default: the watch directory).")
     parser.add_argument("--version", action="store_true", help="Print version and exit.")
     return parser.parse_args(argv)
+
+
+def _write_notes(config: Config, subtitles: Sequence[Path], profile: Optional[str]) -> int:
+    """Turn freshly written subtitles into notes.
+
+    Args:
+        config: Resolved configuration.
+        subtitles: Subtitle files produced by this transcription run.
+        profile: Forced content-type profile, or None for auto-detection.
+
+    Returns:
+        How many notes were written.
+    """
+    from src.srt_daemon.pipeline import generate_notes
+
+    written = 0
+    for subtitle in subtitles:
+        try:
+            result = generate_notes(config, subtitle, forced_profile=profile)
+        except Exception as exc:  # noqa: BLE001 - one failure must not stop the run
+            log.error("Note generation failed for %s: %s", subtitle.name, exc)
+            print(f"FAILED note {subtitle.name}: {exc}", file=sys.stderr)
+            continue
+        written += 1
+        print(f"NOTE {result.output_path}")
+    return written
 
 
 def main() -> None:
@@ -978,7 +1017,7 @@ def main() -> None:
         return
 
     # --- Run ------------------------------------------------------------------
-    done = skipped = failed = 0
+    done = skipped = failed = notes = 0
     for source in sources:
         if args.limit is not None and done >= args.limit:
             log.info("Reached --limit %d — stopping", args.limit)
@@ -1003,9 +1042,13 @@ def main() -> None:
         for path in result.subtitles:
             print(str(path))
 
+        if args.notes or args.profile:
+            notes += _write_notes(config, result.subtitles, args.profile)
+
     log.info(
-        "Transcription run finished: %d transcribed, %d skipped, %d failed",
-        done, skipped, failed,
+        "Transcription run finished: %d transcribed, %d skipped, %d failed, "
+        "%d note(s) written",
+        done, skipped, failed, notes,
     )
     if failed:
         sys.exit(1)

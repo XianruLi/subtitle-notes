@@ -485,7 +485,7 @@ class App:
         media.pack(fill="x", pady=(0, 20))
         ctk.CTkLabel(
             media.body,
-            text="本地录音或录像转录成带说话人的字幕，并放进监听目录等待出笔记。",
+            text="本地录音或录像 → 带说话人的字幕；勾选下面「转录后自动生成笔记」可直接出笔记。",
             font=_font(12),
             text_color=MUTED,
         ).pack(anchor="w")
@@ -514,7 +514,7 @@ class App:
 
         options = ctk.CTkFrame(media.body, fg_color="transparent")
         options.pack(fill="x", pady=(12, 0))
-        for column in range(4):
+        for column in range(5):
             options.grid_columnconfigure(column, weight=1)
 
         self.trans_model_var = ctk.StringVar(
@@ -545,12 +545,23 @@ class App:
         self._combo_option(options, "输出格式", self.trans_format_var, OUTPUT_FORMATS, 0, 1)
         self._entry_option(options, "说话人数", self.trans_num_var, 1, 1, "空 = 自动")
         self._entry_option(options, "姓名映射", self.trans_map_var, 2, 1, "1=张三,2=李四")
+        self.trans_profile_var = ctk.StringVar(value=self.settings.last_profile)
+        self.trans_notes_var = ctk.BooleanVar(value=True)
+        self._combo_option(
+            options, "笔记类型", self.trans_profile_var, PROFILE_CHOICES, 0, 2
+        )
+        ctk.CTkCheckBox(
+            options, text="转录后自动生成笔记", variable=self.trans_notes_var,
+            font=_font(12), checkbox_width=18, checkbox_height=18,
+            corner_radius=4, fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            border_color=BORDER,
+        ).grid(row=2, column=1, sticky="w", padx=8, pady=6)
         ctk.CTkLabel(
             options,
             text="设备 auto = 先试 GPU，失败自动回退 CPU",
             font=_font(10),
             text_color=MUTED,
-        ).grid(row=2, column=3, sticky="w", padx=8)
+        ).grid(row=2, column=3, columnspan=2, sticky="w", padx=8)
         ctk.CTkCheckBox(
             options, text="强制重跑", variable=self.trans_force_var, font=_font(12),
             checkbox_width=18, checkbox_height=18, corner_radius=4,
@@ -1125,6 +1136,11 @@ class App:
             args += ["--speakers", mapping]
         if self.trans_force_var.get():
             args += ["--force"]
+        profile = self.trans_profile_var.get()
+        if self.trans_notes_var.get() or profile != "auto":
+            args += ["--notes"]
+        if profile != "auto":
+            args += ["--profile", profile]
         return args
 
     def _list_media_jobs(self) -> None:

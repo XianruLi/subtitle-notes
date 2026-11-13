@@ -363,3 +363,43 @@ class TestScreenshotHint:
         (temp_config.watch_dir / "talk.mp4").write_bytes(b"x")
 
         assert self._run(temp_config, subtitle, screenshots=False) is False
+
+class TestWatchIgnoresRecordingsWhenOff:
+    """With auto_transcribe_media off, the watch dir only handles subtitles."""
+
+    def test_allowed_extensions_exclude_media(self, temp_config: Config) -> None:
+        enable_media(temp_config)
+        temp_config._data["transcribe"]["auto_transcribe_media"] = False
+
+        watcher = FileWatcher(temp_config)
+
+        assert watcher._allowed_extensions == {".srt", ".vtt"}
+
+    def test_event_for_a_recording_is_ignored(self, temp_config: Config) -> None:
+        enable_media(temp_config)
+        temp_config._data["transcribe"]["auto_transcribe_media"] = False
+        media = temp_config.watch_dir / "meeting.mp3"
+        media.write_bytes(b"fake")
+        watcher = FileWatcher(temp_config)
+
+        with patch.object(watcher, "_enqueue_file") as enqueue:
+            watcher._on_file_event(media)
+
+        enqueue.assert_not_called()
+
+    def test_subtitles_still_work(self, temp_config: Config) -> None:
+        enable_media(temp_config)
+        temp_config._data["transcribe"]["auto_transcribe_media"] = False
+        subtitle = temp_config.watch_dir / "lecture.vtt"
+        subtitle.write_text(
+            "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n", encoding="utf-8"
+        )
+        watcher = FileWatcher(temp_config)
+        client = MagicMock()
+        client.process.return_value = "# Notes"
+        client.classify_profile.return_value = None
+
+        with patch.object(FileWatcher, "_get_ai_client", return_value=client):
+            watcher._process_file(subtitle)
+
+        assert list(temp_config.output_dir.rglob("*.md"))

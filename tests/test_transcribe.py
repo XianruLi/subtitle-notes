@@ -478,3 +478,44 @@ class TestCli:
     def test_invalid_diarizer_rejected(self) -> None:
         with pytest.raises(SystemExit):
             parse_args(["--diarizer", "whisperx"])
+
+class TestWriteNotesAfterTranscription:
+    def test_write_notes_forwards_the_profile(
+        self, temp_config, tmp_path: Path
+    ) -> None:
+        from types import SimpleNamespace
+
+        from src.srt_daemon.transcribe import _write_notes
+
+        subtitle = tmp_path / "lecture.vtt"
+        subtitle.write_text("WEBVTT\n", encoding="utf-8")
+
+        with patch("src.srt_daemon.pipeline.generate_notes") as generate:
+            generate.return_value = SimpleNamespace(output_path=tmp_path / "x.md")
+
+            written = _write_notes(temp_config, [subtitle], "meeting")
+
+        assert written == 1
+        assert generate.call_args.kwargs["forced_profile"] == "meeting"
+
+    def test_failure_does_not_stop_the_run(self, temp_config, tmp_path: Path) -> None:
+        from src.srt_daemon.transcribe import _write_notes
+
+        first = tmp_path / "a.vtt"
+        second = tmp_path / "b.vtt"
+        for path in (first, second):
+            path.write_text("WEBVTT\n", encoding="utf-8")
+
+        from types import SimpleNamespace
+
+        with patch(
+            "src.srt_daemon.pipeline.generate_notes",
+            side_effect=[
+                RuntimeError("boom"),
+                SimpleNamespace(output_path=tmp_path / "ok.md"),
+            ],
+        ) as generate:
+            written = _write_notes(temp_config, [first, second], None)
+
+        assert generate.call_count == 2
+        assert written == 1

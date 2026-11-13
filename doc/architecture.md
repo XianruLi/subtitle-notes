@@ -103,7 +103,9 @@ flowchart TD
 要点：
 
 - 只处理**监听目录这一层**，不递归子目录（见第 9 节限制）
-- 音视频文件如果旁边已有字幕后缀（lecture.en.vtt 也算），**不会重复转录**
+- 默认**只吃字幕文件**（transcribe.auto_transcribe_media: false）：录音/视频一律跳过，并在日志里
+  提示改用「新建任务」页，避免用猜出来的参数白跑一小时转录
+- 打开自动转录后：音视频文件如果旁边已有字幕后缀（lecture.en.vtt 也算），**不会重复转录**
 - 同一个文件处理失败不会影响后续文件；进程内用 in_progress 防重入
 
 ---
@@ -169,6 +171,8 @@ flowchart TD
 ```
 
 写出的字幕落在监听目录（transcribe.output_dir），所以下一轮 watcher 会自动接力出笔记。
+手动路径可以一步到位：`--transcribe ... --notes --profile meeting` 转录完成后直接走流水线 B
+出笔记（GUI「新建任务」页的「转录后自动生成笔记」就是这个开关）。
 
 ---
 
