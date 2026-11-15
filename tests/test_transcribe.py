@@ -519,3 +519,40 @@ class TestWriteNotesAfterTranscription:
 
         assert generate.call_count == 2
         assert written == 1
+
+class TestVadFallback:
+    """A missing Silero VAD asset must not kill the whole transcription."""
+
+    def test_retries_without_vad(self, temp_config, tmp_path, monkeypatch) -> None:
+        from types import SimpleNamespace
+
+        from src.srt_daemon import transcribe as tr
+
+        temp_config._data.setdefault("transcribe", {})["vad_filter"] = True
+        subject = tr.Transcriber.__new__(tr.Transcriber)
+        subject._config = temp_config
+        subject._beam_size = 5
+        subject._language = "en"
+        subject._word_timestamps = False
+
+        calls: list[dict] = []
+
+        def fake_transcribe(path, **options):
+            calls.append(dict(options))
+            if options.get("vad_filter"):
+                raise RuntimeError("NO_SUCHFILE: silero_vad_v6.onnx")
+            segment = SimpleNamespace(start=0.0, end=1.0, text="hi", words=[])
+            info = SimpleNamespace(language="en", duration=1.0, language_probability=0.9)
+            return iter([segment]), info
+
+        monkeypatch.setattr(
+            tr.Transcriber, "_ensure_asr", lambda self: SimpleNamespace(transcribe=fake_transcribe)
+        )
+
+        segments, language, duration = subject._run_asr(tmp_path / "a.wav")
+
+        assert len(segments) == 1
+        assert language == "en"
+        assert calls[0]["vad_filter"] is True
+        assert calls[1]["vad_filter"] is False
+        assert "vad_parameters" not in calls[1]

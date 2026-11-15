@@ -598,8 +598,7 @@ class Transcriber:
     def _run_asr(self, wav_path: Path) -> tuple[list[AsrSegment], str, float]:
         """Run faster-whisper over *wav_path* and collect its segments."""
         model = self._ensure_asr()
-        segments, info = model.transcribe(
-            str(wav_path),
+        options = dict(
             beam_size=self._beam_size,
             language=self._language,
             vad_filter=self._config.transcribe_vad_filter,
@@ -608,6 +607,23 @@ class Transcriber:
             ),
             word_timestamps=self._word_timestamps,
         )
+        try:
+            segments, info = model.transcribe(str(wav_path), **options)
+        except Exception as exc:  # noqa: BLE001 - see the VAD fallback below
+            # A packaged app once shipped without faster_whisper/assets
+            # (silero_vad_v6.onnx), so every transcription died with
+            # ONNXRuntimeError NO_SUCHFILE. Retry without the VAD filter: it is
+            # an optimisation, not a requirement.
+            if not options["vad_filter"]:
+                raise
+            log.warning(
+                "ASR failed with VAD enabled (%s: %s) — retrying without the VAD filter",
+                type(exc).__name__,
+                str(exc).splitlines()[0][:200],
+            )
+            options["vad_filter"] = False
+            options.pop("vad_parameters", None)
+            segments, info = model.transcribe(str(wav_path), **options)
 
         collected: list[AsrSegment] = []
         for segment in segments:
@@ -1032,6 +1048,16 @@ def main() -> None:
         except (TranscriptionError, DiarizationError) as exc:
             log.error("Failed: %s — %s", source.name, exc)
             print(f"FAILED {source.name}: {exc}", file=sys.stderr)
+            failed += 1
+            continue
+        except Exception as exc:  # noqa: BLE001 - one bad file must not abort the batch
+            # e.g. a missing native model inside a packaged build: report it
+            # with the full traceback in the log and keep going.
+            log.exception("Unexpected failure transcribing %s", source.name)
+            print(
+                f"FAILED {source.name}: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
             failed += 1
             continue
 

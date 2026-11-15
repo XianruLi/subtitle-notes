@@ -63,6 +63,14 @@ try:
 except Exception:  # noqa: BLE001 - optional dependency
     pass
 
+# faster-whisper ships the Silero VAD model as a data file
+# (faster_whisper/assets/silero_vad_v6.onnx). Without it, transcription with
+# vad_filter enabled dies with ONNXRuntimeError NO_SUCHFILE in the packaged app.
+try:
+    datas += collect_data_files("faster_whisper")
+except Exception:  # noqa: BLE001 - optional dependency
+    pass
+
 a = Analysis(
     ["src/srt_daemon/app.py"],
     pathex=["."],

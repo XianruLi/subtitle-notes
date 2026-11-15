@@ -123,9 +123,37 @@ def selftest() -> int:
     return 0 if not problems else 1
 
 
+def _report_crash(exc: BaseException) -> None:
+    """Log an unexpected error and, when possible, show a short message box."""
+    log.error("Unhandled error: %s", exc, exc_info=True)
+    message = f"{type(exc).__name__}: {exc}"
+    try:  # noqa: SIM105 - a message box is best effort only
+        import ctypes
+
+        detail = "详情见 logs 目录下的 srt-daemon.log"
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            message + chr(10) + chr(10) + detail,
+            "SRT Daemon 出错",
+            0x10,
+        )
+    except Exception:  # noqa: BLE001
+        print(f"Unhandled error: {message}", file=sys.stderr)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """Dispatch to the GUI, the transcribe CLI or the notes CLI."""
     args = list(sys.argv[1:] if argv is None else argv)
+    try:
+        return _dispatch(args)
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001 - windowed builds must not dump a traceback
+        _report_crash(exc)
+        return 1
+
+
+def _dispatch(args: list[str]) -> int:
 
     if "--selftest" in args:
         return selftest()
