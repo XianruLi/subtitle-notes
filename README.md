@@ -12,6 +12,8 @@
 
 ![新建任务页](doc/gui-new.png)
 
+![任务进度：转录按时间轴推进，笔记按阶段推进](doc/gui-progress.png)
+
 ![在线视频页](doc/gui-online.png)
 
 ## 具体使用方法（4 步）
