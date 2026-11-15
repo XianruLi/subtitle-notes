@@ -36,7 +36,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
 > **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
-> [Releases · v0.4.1](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.4.1)
+> [Releases · v0.5.0](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.5.0)
 > —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
 
 ## 三种入口，按场景选
@@ -284,6 +284,14 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 填「说话人数」。
 
 ## 更新日志
+
+**v0.5.0（2026-11-16）**
+
+- **真实进度条**：转录显示 "已识别 25:00 / 总 1:03:43（39%）· 还剩约 49 分钟"，
+  笔记生成按阶段推进（读取字幕 → AI 总结 n/m → 插入截图 k/N → 写入笔记）
+- 进度写在 `output/.progress-*.json`，窗口关掉再打开还能接着看
+- 打包版转录崩溃修复（Silero VAD 模型进包 + 缺失时自动关 VAD）
+- 意外错误改为简短提示 + 完整堆栈写日志
 
 **v0.4.1（2026-11-15）**
 
