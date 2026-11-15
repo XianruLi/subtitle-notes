@@ -36,7 +36,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
 > **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
-> [Releases · v0.4.0](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.4.0)
+> [Releases · v0.4.1](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.4.1)
 > —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
 
 ## 三种入口，按场景选
@@ -284,6 +284,14 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 填「说话人数」。
 
 ## 更新日志
+
+**v0.4.1（2026-11-15）**
+
+- 修复**打包版一转录就崩溃**：PyInstaller 没有收集 faster-whisper 的
+  `silero_vad_v6.onnx`，一开 VAD 就报 `ONNXRuntimeError NO_SUCHFILE`。
+  现在模型已进包；万一缺失也会自动关掉 VAD 继续跑
+- 单个录音出错不再中断整批；窗口版出现意外错误时弹简短提示并把堆栈写进日志
+- v0.4.0 的便携包**转录功能不可用**，请用 v0.4.1
 
 **v0.4.0（2026-11-13）**
 
