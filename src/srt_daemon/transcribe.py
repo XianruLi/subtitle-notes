@@ -50,6 +50,7 @@ from src.srt_daemon.diarize import (
     speaker_names_from_spec,
 )
 from src.srt_daemon.logger import get_logger, setup_logging
+from src.srt_daemon import progress as progress_reporting
 
 log = get_logger(__name__)
 
@@ -483,6 +484,7 @@ class Transcriber:
         self._beam_size = (
             beam_size if beam_size is not None else config.transcribe_beam_size
         )
+        self._current_file = ""
         self._word_timestamps = (
             config.transcribe_word_timestamps
             if word_timestamps is None
@@ -497,6 +499,26 @@ class Transcriber:
         self.state = state or TranscriptionState(config.transcribe_state_file)
 
     # -- lazy ASR -------------------------------------------------------------
+
+    def _progress(
+        self,
+        stage: str,
+        done: float = 0.0,
+        total: float = 0.0,
+        detail: str = "",
+        file_name: str = "",
+    ) -> None:
+        """Publish this job's progress for the GUI (best effort)."""
+        progress_reporting.write_progress(
+            self._config.output_dir,
+            progress_reporting.TRANSCRIBE,
+            stage=stage,
+            done=done,
+            total=total,
+            detail=detail,
+            file=file_name or getattr(self, "_current_file", ""),
+            started_at=getattr(self, "_started_at", 0.0),
+        )
 
     def _ensure_asr(self) -> Any:
         if self._asr is not None:
@@ -625,6 +647,9 @@ class Transcriber:
             options.pop("vad_parameters", None)
             segments, info = model.transcribe(str(wav_path), **options)
 
+        total_seconds = float(getattr(info, "duration", 0.0) or 0.0)
+        self._progress(progress_reporting.STAGE_ASR, 0.0, total_seconds)
+
         collected: list[AsrSegment] = []
         for segment in segments:
             words = [
@@ -646,6 +671,12 @@ class Transcriber:
                     "  ... %d segments, at %s",
                     len(collected),
                     format_timestamp(collected[-1].end),
+                )
+                self._progress(
+                    progress_reporting.STAGE_ASR,
+                    float(collected[-1].end),
+                    total_seconds,
+                    detail=f"{len(collected)} 段",
                 )
 
         language = getattr(info, "language", self._language or "?")
@@ -690,6 +721,11 @@ class Transcriber:
         started = time.time()
         log.info("=" * 60)
         log.info("Transcribing: %s (%.1f MB)", source.name, source.stat().st_size / 1e6)
+        self._current_file = source.name
+        self._started_at = time.time()
+        self._progress(
+            progress_reporting.STAGE_LOADING, detail="解码音频 / 加载模型", file_name=source.name
+        )
 
         with tempfile.TemporaryDirectory(prefix="transcribe_") as tmp:
             wav_path = Path(tmp) / "audio16k.wav"
@@ -698,6 +734,13 @@ class Transcriber:
             segments, language, duration = self._run_asr(wav_path)
 
             turns: list[SpeakerTurn] = []
+            self._progress(
+                progress_reporting.STAGE_DIARIZE,
+                0.0,
+                duration,
+                detail="说话人聚类",
+                file_name=source.name,
+            )
             try:
                 turns = self._diarizer.diarize(wav_path, num_speakers=num_speakers)
             except DiarizationError as exc:
@@ -714,6 +757,13 @@ class Transcriber:
         )
         speaker_count = len({cue.speaker for cue in cues if cue.speaker})
 
+        self._progress(
+            progress_reporting.STAGE_WRITING,
+            duration,
+            duration,
+            detail="写入字幕",
+            file_name=source.name,
+        )
         subtitles = self._write_subtitles(
             cues,
             source,
@@ -1071,6 +1121,7 @@ def main() -> None:
         if args.notes or args.profile:
             notes += _write_notes(config, result.subtitles, args.profile)
 
+    progress_reporting.clear_progress(config.output_dir, progress_reporting.TRANSCRIBE)
     log.info(
         "Transcription run finished: %d transcribed, %d skipped, %d failed, "
         "%d note(s) written",

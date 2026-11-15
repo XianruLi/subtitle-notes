@@ -39,6 +39,7 @@ from src.srt_daemon.gui import (
     set_autostart,
     set_config_value,
 )
+from src.srt_daemon import progress as progress_reporting
 from src.srt_daemon.config import load_config
 from src.srt_daemon.logger import setup_logging
 
@@ -58,6 +59,33 @@ OUTPUT_LOCATION_VALUES = {
     OUTPUT_LOCATIONS[0]: "central",
     OUTPUT_LOCATIONS[1]: "source",
 }
+
+# Stage labels shown on the progress lines.
+TRANSCRIBE_STAGE_LABELS = {
+    "loading": "解码音频 / 加载模型",
+    "asr": "识别语音",
+    "diarize": "说话人聚类",
+    "writing": "写入字幕",
+    "done": "完成",
+}
+NOTES_STAGE_LABELS = {
+    "parse": "读取字幕",
+    "ai": "AI 总结",
+    "screenshots": "插入截图",
+    "write": "写入笔记",
+    "done": "完成",
+}
+
+
+def format_duration(seconds: float) -> str:
+    """mm:ss or h:mm:ss for a duration in seconds."""
+    total = int(max(0.0, seconds))
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
 
 BG = ("#F4F5F7", "#161A20")
 SIDEBAR = ("#FFFFFF", "#1C2128")
@@ -568,6 +596,17 @@ class App:
             media.body, text="未选择文件", font=_font(12), text_color=MUTED, anchor="w"
         )
         self.media_label.pack(fill="x")
+
+        self.trans_status = ctk.CTkLabel(
+            media.body, text="", font=_font(12), text_color=MUTED, anchor="w"
+        )
+        self.trans_status.pack(fill="x", pady=(6, 0))
+        self.trans_bar = ctk.CTkProgressBar(
+            media.body, height=6, corner_radius=3,
+            fg_color=ACCENT_SOFT, progress_color=ACCENT,
+        )
+        self.trans_bar.pack(fill="x", pady=(6, 0))
+        self.trans_bar.set(0)
 
         options = ctk.CTkFrame(media.body, fg_color="transparent")
         options.pack(fill="x", pady=(12, 0))
@@ -1379,6 +1418,62 @@ class App:
             self._append_log(f"[任务] {key} 结束 (exit={job.exit_code})\n")
             self._last_notes_refresh = 0.0
 
+    def _render_progress(
+        self, label: Any, bar: Any, kind: str, labels: dict[str, str]
+    ) -> bool:
+        """Show a job's published progress; True when something was rendered."""
+        data = progress_reporting.read_progress(self.cfg.output_dir, kind)
+        if not data:
+            return False
+        stage = labels.get(str(data.get("stage")), str(data.get("stage", "")))
+        done = float(data.get("done", 0) or 0)
+        total = float(data.get("total", 0) or 0)
+        detail = str(data.get("detail", "") or "")
+        if total > 0:
+            percent = max(0.0, min(100.0, done * 100.0 / total))
+            bar.set(percent / 100.0)
+            eta = ""
+            started = float(data.get("started_at", 0) or 0)
+            if started > 0 and done > 0:
+                elapsed = max(1.0, time.time() - started)
+                remaining = (total - done) * (elapsed / done)
+                if remaining > 0:
+                    eta = f" · 还剩约 {format_duration(remaining)}"
+            text = (
+                f"{stage}：{format_duration(done)} / {format_duration(total)}"
+                f"（{percent:.0f}%）{eta}"
+            )
+        else:
+            bar.set(0)
+            text = stage + (f"：{detail}" if detail else "")
+        if detail and total > 0:
+            text += f" · {detail}"
+        label.configure(text=text, text_color=ACCENT)
+        return True
+
+    def _update_trans_progress(self) -> None:
+        """Show real transcription progress on the media card."""
+        label = getattr(self, "trans_status", None)
+        bar = getattr(self, "trans_bar", None)
+        if label is None or bar is None:
+            return
+        job = self.jobs.get("transcribe")
+        running = bool(job and job.running)
+        if running:
+            if not self._render_progress(
+                label, bar, progress_reporting.TRANSCRIBE, TRANSCRIBE_STAGE_LABELS
+            ):
+                label.configure(text="准备中…", text_color=MUTED)
+            return
+        code = job.exit_code if job else None
+        if code is None:
+            return
+        bar.set(1 if code == 0 else 0)
+        label.configure(
+            text="转录完成" if code == 0 else f"转录失败（退出码 {code}）— 看「日志」页",
+            text_color=OK if code == 0 else ERR,
+        )
+
     def _update_once_progress(self) -> None:
         """Mirror the single-file job on the new-task card."""
         label = getattr(self, "once_status", None)
@@ -1387,6 +1482,10 @@ class App:
             return
         job = self.jobs.get("once")
         if job is not None and job.running:
+            if not self._render_progress(
+                label, bar, progress_reporting.NOTES, NOTES_STAGE_LABELS
+            ):
+                bar.start()
             return
         self._once_launched = False
         bar.stop()
@@ -1414,6 +1513,7 @@ class App:
         try:
             self._drain_jobs()
             self._update_once_progress()
+            self._update_trans_progress()
             if self._ticks % 2 == 0:
                 self._refresh_status()
                 new_text = self._log_tail.read_new()

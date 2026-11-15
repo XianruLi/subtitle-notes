@@ -20,7 +20,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from src.srt_daemon.config import Config
 from src.srt_daemon.logger import get_logger
@@ -227,6 +227,7 @@ def process_markdown(
     *,
     config: Config,
     ffmpeg: Optional[str] = None,
+    progress: Optional[Callable[[int, int, str], None]] = None,
 ) -> ScreenshotResult:
     """Replace screenshot markers with real images.
 
@@ -277,6 +278,8 @@ def process_markdown(
             )
             if ok:
                 extracted[marker.raw] = marker
+                if progress is not None:
+                    progress(len(extracted), len(unique), marker.filename)
                 if offset:
                     log.info(
                         "Frame for %s came %ds later than the marker (window %ds)",

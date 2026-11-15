@@ -183,6 +183,7 @@ class AiClient:
         speaker: Optional[SpeakerInfo] = None,
         source_format: Optional[str] = None,
         has_video: bool = False,
+        progress: Optional[Callable[[int, int, str], None]] = None,
     ) -> str:
         """Process subtitle text and return the requested Markdown document.
 
@@ -201,6 +202,8 @@ class AiClient:
                 "use these exact labels" / "inference only" instruction.
             has_video: True when a video is on disk for screenshots, so the
                 model is told that picture markers will actually be rendered.
+            progress: Optional callback (done, total, detail) used to report
+                chunk progress to the GUI.
             source_format: Subtitle format label (``SRT`` / ``VTT``).
 
         Returns:
@@ -236,14 +239,19 @@ class AiClient:
             chunks = self._chunk_text(text)
             log.info("Split into %d chunk(s)", len(chunks))
             responses = self._process_chunks(
-                chunks, filename, system_prompt, context
+                chunks, filename, system_prompt, context, progress=progress
             )
             return self._merge_responses(
                 responses, filename, system_prompt, context, speaker
             )
 
+        if progress is not None:
+            progress(0, 1, "调用模型")
         user_message = self._build_user_message(text, filename, context)
-        return self._call_api_with_retry(system_prompt, user_message)
+        result = self._call_api_with_retry(system_prompt, user_message)
+        if progress is not None:
+            progress(1, 1, "模型已返回")
+        return result
 
     def _system_prompt_for(self, profile: Optional[Profile]) -> str:
         """Return the cached system prompt of *profile* (or the default one)."""
@@ -543,6 +551,7 @@ class AiClient:
         filename: str,
         system_prompt: Optional[str] = None,
         context: str = "",
+        progress: Optional[Callable[[int, int, str], None]] = None,
     ) -> list[str]:
         """Process each chunk sequentially through the DeepSeek API.
 
@@ -566,6 +575,8 @@ class AiClient:
 
         for i, chunk in enumerate(chunks):
             part_num = i + 1
+            if progress is not None:
+                progress(i, total, f"第 {part_num}/{total} 块")
 
             if part_num == 1:
                 heading = (

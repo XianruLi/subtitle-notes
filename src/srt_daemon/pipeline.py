@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
 from src.srt_daemon.config import Config
+from src.srt_daemon import progress as progress_reporting
 from src.srt_daemon.logger import get_logger
 from src.srt_daemon.profiles import (
     ProfileResolution,
@@ -137,6 +138,7 @@ def write_note(
     video_path: Optional[str | Path] = None,
     screenshots: Optional[bool] = None,
     output_root: Optional[Path] = None,
+    progress: Optional[Callable[[str, int, int, str], None]] = None,
 ) -> tuple[Path, int]:
     """Embed screenshots (optional) and write the Markdown file.
 
@@ -161,6 +163,13 @@ def write_note(
             Path(video_path) if video_path else None,
             staging,
             config=config,
+            progress=(
+                None
+                if progress is None
+                else lambda done, total, name: progress(
+                    progress_reporting.STAGE_SCREENSHOTS, done, total, name
+                )
+            ),
         )
         markdown = processed.markdown
         images = processed.images
@@ -173,6 +182,8 @@ def write_note(
     metadata = dict(metadata)
     metadata["images"] = len(images)
 
+    if progress is not None:
+        progress(progress_reporting.STAGE_NOTE_WRITE, 0, 1, "写入笔记")
     writer = MarkdownWriter(config)
     output_path = writer.write(
         content=markdown,
@@ -303,8 +314,18 @@ def generate_notes(
     from src.srt_daemon.writer import MarkdownWriter
 
     path = Path(subtitle_path)
+    progress_reporting.write_progress(
+        config.output_dir,
+        progress_reporting.NOTES,
+        stage=progress_reporting.STAGE_PARSE,
+        detail="读取字幕",
+        file=path.name,
+    )
     parsed = parse_subtitle(path, with_timestamps=with_timestamps)
     if not parsed.entries:
+        progress_reporting.clear_progress(
+            config.output_dir, progress_reporting.NOTES
+        )
         raise NotesPipelineError(f"No subtitle entries found in {path.name}")
 
     registry = ProfileRegistry(config)
@@ -347,6 +368,17 @@ def generate_notes(
         has_video,
     )
 
+    def report_ai(done: int, total: int, detail: str) -> None:
+        progress_reporting.write_progress(
+            config.output_dir,
+            progress_reporting.NOTES,
+            stage=progress_reporting.STAGE_AI,
+            done=done,
+            total=total,
+            detail=detail,
+            file=path.name,
+        )
+
     client = AiClient(config, profile=profile)
     markdown = client.process(
         parsed.text,
@@ -355,6 +387,7 @@ def generate_notes(
         speaker=speaker,
         source_format=parsed.format_label,
         has_video=has_video,
+        progress=report_ai,
     )
 
     metadata: dict[str, Any] = {
@@ -368,6 +401,17 @@ def generate_notes(
     if extra_metadata:
         metadata.update({key: value for key, value in extra_metadata.items() if value})
 
+    def report_stage(stage: str, done: int, total: int, detail: str) -> None:
+        progress_reporting.write_progress(
+            config.output_dir,
+            progress_reporting.NOTES,
+            stage=stage,
+            done=done,
+            total=total,
+            detail=detail,
+            file=path.name,
+        )
+
     output_path, _images = write_note(
         config,
         markdown,
@@ -376,7 +420,9 @@ def generate_notes(
         video_path=video_path,
         screenshots=screenshots,
         output_root=resolve_output_root(config, path, output_root),
+        progress=report_stage,
     )
+    progress_reporting.clear_progress(config.output_dir, progress_reporting.NOTES)
     log.info("Note written: %s", output_path)
 
     return NotesResult(

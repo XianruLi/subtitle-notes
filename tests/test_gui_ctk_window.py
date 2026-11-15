@@ -199,3 +199,44 @@ def test_once_progress_keeps_running_state(
     finally:
         app._quitting = True
         app.root.destroy()
+
+def test_render_progress_from_a_published_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The card reads .progress-*.json and shows a real percentage."""
+    from src.srt_daemon import progress as pr
+    from src.srt_daemon.gui_ctk import App
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    settings = tmp_path / "gui_settings.json"
+    GuiSettings(start_watcher_on_launch=False, minimize_to_tray=False).save(settings)
+    monkeypatch.setattr(App, "_gui_settings_path", lambda self: settings)
+    monkeypatch.setattr(App, "_init_tray", lambda self: None)
+
+    app = App(start_hidden=True)
+    try:
+        pr.write_progress(
+            app.cfg.output_dir,
+            pr.TRANSCRIBE,
+            stage="asr",
+            done=45,
+            total=90,
+            detail="120 段",
+            file="a.mp4",
+            started_at=time.time() - 45,
+        )
+
+        label = app.trans_status
+        bar = app.trans_bar
+        app.jobs["transcribe"] = type("Job", (), {"running": True, "exit_code": None})()
+
+        app._update_trans_progress()
+
+        text = label.cget("text")
+        assert "识别语音" in text
+        assert "50%" in text
+        assert bar.get() == pytest.approx(0.5, abs=0.01)
+    finally:
+        pr.clear_progress(app.cfg.output_dir, pr.TRANSCRIBE)
+        app._quitting = True
+        app.root.destroy()
