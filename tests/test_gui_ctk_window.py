@@ -241,3 +241,41 @@ def test_render_progress_from_a_published_document(
         pr.clear_progress(app.cfg.output_dir, pr.TRANSCRIBE)
         app._quitting = True
         app.root.destroy()
+
+def test_single_call_ai_shows_elapsed_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A one-call AI stage has no sub-progress; show how long it has waited."""
+    from src.srt_daemon import progress as pr
+    from src.srt_daemon.gui_ctk import App
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    settings = tmp_path / "gui_settings.json"
+    GuiSettings(start_watcher_on_launch=False, minimize_to_tray=False).save(settings)
+    monkeypatch.setattr(App, "_gui_settings_path", lambda self: settings)
+    monkeypatch.setattr(App, "_init_tray", lambda self: None)
+
+    app = App(start_hidden=True)
+    try:
+        pr.write_progress(
+            app.cfg.output_dir,
+            pr.NOTES,
+            stage="ai",
+            done=0,
+            total=1,
+            detail="调用模型",
+            file="talk.srt",
+        )
+        app._once_launched = True
+        app.jobs["once"] = type("Job", (), {"running": True, "exit_code": None})()
+
+        app._update_once_progress()
+
+        text = app.once_status.cget("text")
+        assert "AI 总结" in text
+        assert "已等待" in text
+        assert app.once_bar.get() == pytest.approx(0.05, abs=0.01)
+    finally:
+        pr.clear_progress(app.cfg.output_dir, pr.NOTES)
+        app._quitting = True
+        app.root.destroy()

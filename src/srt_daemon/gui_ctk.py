@@ -1469,6 +1469,11 @@ class App:
             text = stage + (f"：{detail}" if detail else "")
         if detail and total > 0:
             text += f" · {detail}"
+        # A subtitle small enough to fit in one API call has no sub-progress:
+        # show how long the call has been running instead of a frozen bar.
+        if raw_stage == progress_reporting.STAGE_AI and total <= 1 and done < 1:
+            waited = max(0.0, time.time() - float(data.get("updated_at", 0) or 0))
+            text += f" · 已等待 {format_duration(waited)}"
         label.configure(text=text, text_color=ACCENT)
         return True
 
