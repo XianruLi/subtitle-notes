@@ -1121,8 +1121,9 @@ class App:
         ok = job.start(args, cwd=Path(self.cfg.project_root))
         if ok and row is not None:
             row["status"].configure(text="运行中", text_color=ACCENT)
+            # No marquee animation: it made the bar sweep from zero again and
+            # again, which looked like progress that never got anywhere.
             row["bar"].set(0)
-            row["bar"].start()
             self._append_log(f"[任务] 启动 {key}: {' '.join(args)}\n")
         elif row is not None:
             row["status"].configure(text="启动失败", text_color=ERR)
@@ -1203,7 +1204,6 @@ class App:
             text_color=ACCENT,
         )
         self.once_bar.set(0)
-        self.once_bar.start()
 
     # -- transcription --------------------------------------------------------
 
@@ -1404,7 +1404,24 @@ class App:
                 self._append_log(line + "\n")
                 if key in ("fetch", "transcribe"):
                     self._append_online(line + "\n")
-            if job.running or job.exit_code is None or row is None:
+            if job.running and row is not None:
+                # Fill the row from the job's published progress when there is
+                # one (once -> notes, transcribe -> transcription).
+                kind = {"once": progress_reporting.NOTES, "transcribe": progress_reporting.TRANSCRIBE}.get(key)
+                if kind is not None:
+                    data = progress_reporting.read_progress(self.cfg.output_dir, kind)
+                    if data:
+                        raw_stage = str(data.get("stage", ""))
+                        row["bar"].set(
+                            progress_reporting.overall_fraction(
+                                kind,
+                                raw_stage,
+                                float(data.get("done", 0) or 0),
+                                float(data.get("total", 0) or 0),
+                            )
+                        )
+                continue
+            if job.exit_code is None or row is None:
                 continue
             if row["status"].cget("text") != "运行中":
                 continue
@@ -1425,13 +1442,17 @@ class App:
         data = progress_reporting.read_progress(self.cfg.output_dir, kind)
         if not data:
             return False
-        stage = labels.get(str(data.get("stage")), str(data.get("stage", "")))
+        raw_stage = str(data.get("stage", ""))
+        stage = labels.get(raw_stage, raw_stage)
         done = float(data.get("done", 0) or 0)
         total = float(data.get("total", 0) or 0)
         detail = str(data.get("detail", "") or "")
-        if total > 0:
-            percent = max(0.0, min(100.0, done * 100.0 / total))
-            bar.set(percent / 100.0)
+        # Stages occupy fixed ranges, so the bar never jumps back to zero when
+        # the job moves on (ASR -> diarization -> writing).
+        fraction = progress_reporting.overall_fraction(kind, raw_stage, done, total)
+        if total > 0 or fraction > 0:
+            percent = max(0.0, min(100.0, fraction * 100.0))
+            bar.set(fraction)
             eta = ""
             started = float(data.get("started_at", 0) or 0)
             if started > 0 and done > 0:
@@ -1485,7 +1506,7 @@ class App:
             if not self._render_progress(
                 label, bar, progress_reporting.NOTES, NOTES_STAGE_LABELS
             ):
-                bar.start()
+                bar.set(0)
             return
         self._once_launched = False
         bar.stop()

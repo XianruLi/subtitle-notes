@@ -234,8 +234,9 @@ def test_render_progress_from_a_published_document(
 
         text = label.cget("text")
         assert "识别语音" in text
-        assert "50%" in text
-        assert bar.get() == pytest.approx(0.5, abs=0.01)
+        # ASR occupies 2%..80% of the overall bar -> 50% of the audio is 41%.
+        assert "41%" in text
+        assert bar.get() == pytest.approx(0.41, abs=0.01)
     finally:
         pr.clear_progress(app.cfg.output_dir, pr.TRANSCRIBE)
         app._quitting = True

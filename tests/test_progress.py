@@ -130,3 +130,49 @@ class TestJobsPublishProgress:
         assert recorded[0]["stage"] == "asr"
         assert recorded[0]["total"] == 10.0
         assert recorded[0]["file"] == "a.wav"
+
+class TestStageRanges:
+    def test_transcription_is_monotonic(self) -> None:
+        loading = pr.overall_fraction(pr.TRANSCRIBE, pr.STAGE_LOADING, 0, 0)
+        asr_half = pr.overall_fraction(pr.TRANSCRIBE, pr.STAGE_ASR, 50, 100)
+        diarize = pr.overall_fraction(pr.TRANSCRIBE, pr.STAGE_DIARIZE, 0, 100)
+        writing = pr.overall_fraction(pr.TRANSCRIBE, pr.STAGE_WRITING, 100, 100)
+
+        assert loading <= asr_half < diarize < writing
+        assert 0.3 < asr_half < 0.5  # 50% of the ASR range
+        assert writing == 1.0
+
+    def test_notes_are_monotonic(self) -> None:
+        parse = pr.overall_fraction(pr.NOTES, pr.STAGE_PARSE, 0, 0)
+        ai = pr.overall_fraction(pr.NOTES, pr.STAGE_AI, 1, 3)
+        shots = pr.overall_fraction(pr.NOTES, pr.STAGE_SCREENSHOTS, 2, 7)
+        write = pr.overall_fraction(pr.NOTES, pr.STAGE_NOTE_WRITE, 1, 1)
+
+        assert parse < ai < shots < write
+        assert write == 1.0
+
+    def test_unknown_stage_does_not_crash(self) -> None:
+        assert 0.0 <= pr.overall_fraction("mystery", "stage", 1, 2) <= 1.0
+
+    def test_describe_reports_absence(self, tmp_path) -> None:
+        text = pr.describe(tmp_path, pr.TRANSCRIBE)
+        assert "没有正在进行" in text
+
+    def test_describe_reports_position(self, tmp_path) -> None:
+        pr.write_progress(
+            tmp_path,
+            pr.TRANSCRIBE,
+            stage=pr.STAGE_ASR,
+            done=50,
+            total=100,
+            detail="120 段",
+            file="a.mp4",
+            started_at=time.time() - 60,
+        )
+
+        text = pr.describe(tmp_path, pr.TRANSCRIBE)
+
+        assert "识别语音" in text
+        assert "41.0%" in text  # 2%..80% range at 50%
+        assert "120 段" in text
+        assert "剩余约" in text
