@@ -38,7 +38,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
 > **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
-> [Releases · v0.5.1](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.5.1)
+> [Releases · v0.5.2](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.5.2)
 > —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
 
 ## 三种入口，按场景选
@@ -286,6 +286,11 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 填「说话人数」。
 
 ## 更新日志
+
+**v0.5.2（2026-11-16）**
+
+- 字幕 → 笔记的进度也统一了：读取字幕 → AI 总结（第 n/m 块）→ 插入截图（k/N）→ 写入笔记
+- 单次 AI 调用没有中间进度时，显示 `已等待 00:16`，不再像卡死
 
 **v0.5.1（2026-11-16）**
 
