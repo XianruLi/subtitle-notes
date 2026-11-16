@@ -38,7 +38,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
 > **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
-> [Releases · v0.5.0](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.5.0)
+> [Releases · v0.5.1](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.5.1)
 > —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
 
 ## 三种入口，按场景选
@@ -286,6 +286,14 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 填「说话人数」。
 
 ## 更新日志
+
+**v0.5.1（2026-11-16）**
+
+- **进度条修正**：v0.5.0 用的是 Tk 的不定长动画（每 ~20ms 扫一次），看起来像"永远走不到一半"；
+  现在全部改为确定值，并按阶段分配区间，只会前进不会重置
+- 任务页四行任务也显示真实进度
+- 新增 `python -m src.srt_daemon.progress [--watch 2]`：不开界面也能看到当前阶段与百分比
+  （便携包内另附 `查看任务进度.bat`）
 
 **v0.5.0（2026-11-16）**
 
