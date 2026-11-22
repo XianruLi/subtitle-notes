@@ -38,7 +38,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
 > **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
-> [Releases · v0.6.0](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.6.0)
+> [Releases · v0.6.1](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.6.1)
 > —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
 
 ## 三种入口，按场景选
@@ -298,6 +298,13 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 填「说话人数」。
 
 ## 更新日志
+
+**v0.6.1（2026-11-23）**
+
+- 截图提示词加了密度参照（约每 2–3 分钟一个），并明确"少于下限视为不合格"；
+  32 分钟的讲座实测从 5 张提升到 11 张
+- 若仍不足，自动追加一次"只补标记"的修订（`screenshots.retry_if_short`，默认开）
+- 修掉日志页每行显示两次的问题（子进程 stdout 与日志文件尾部重复追加）
 
 **v0.6.0（2026-11-23）**
 

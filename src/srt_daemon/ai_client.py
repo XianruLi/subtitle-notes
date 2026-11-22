@@ -261,6 +261,57 @@ class AiClient:
             progress(1, 1, "模型已返回")
         return result
 
+    def refine_markers(
+        self,
+        markdown: str,
+        *,
+        low: int,
+        high: int,
+        video_minutes: Optional[float] = None,
+    ) -> Optional[str]:
+        """Ask for one revision that adds screenshot markers.
+
+        The first pass sometimes returns far fewer markers than requested. This
+        second call receives the finished document and may only add markers
+        (content otherwise unchanged), so placement stays sane.
+
+        Args:
+            markdown: The document produced by the first pass.
+            low: Minimum number of markers wanted.
+            high: Maximum number of markers wanted.
+            video_minutes: Video length, mentioned to justify the density.
+
+        Returns:
+            The revised document, or None when the revision failed.
+        """
+        system_prompt = (
+            "You are an editor. You receive a finished Markdown study note and "
+            "must return the SAME document with additional screenshot markers "
+            "[[screenshot:HH:MM:SS]]. Keep every paragraph, heading and table "
+            "unchanged; only insert marker lines where a picture is genuinely "
+            "useful. Copy timestamps that appear in the document; do not invent "
+            "numbers. Output the complete revised document and nothing else."
+        )
+        length_hint = (
+            f"（视频约 {video_minutes:.0f} 分钟，"
+            if video_minutes
+            else "（"
+        )
+        user_message = (
+            f"上一次输出只有少量截图标记，要求至少 {low} 个、最多 {high} 个。"
+            + length_hint
+            + "请把标记均匀分布到全文，覆盖每一次界面切换、新代码段、新图表或"
+            "实物展示；同一画面只标一次；纯口述段落不要标。\n\n"
+            "文档如下（时间戳如果在正文中出现过才标，没有出现就跳过，不要编造）：\n\n"
+            + markdown
+        )
+        try:
+            revised = self._call_api_with_retry(system_prompt, user_message)
+        except Exception as exc:  # noqa: BLE001 - the first pass is still usable
+            log.warning("Screenshot refinement failed: %s", exc)
+            return None
+        return revised or None
+
     def _system_prompt_for(self, profile: Optional[Profile]) -> str:
         """Return the cached system prompt of *profile* (or the default one)."""
         if profile is None or profile is self._profile:
@@ -751,17 +802,27 @@ class AiClient:
             if screenshot_target and screenshot_target > 0:
                 low = max(3, int(round(screenshot_target * 0.6)))
                 high = int(screenshot_target)
-                count_rule = f"请输出 {low}–{high} 个"
-                density = "画面密集的段落可以多标，纯口述、黑屏或重复画面不要标。"
+                count_rule = f"必须输出 {low}–{high} 个"
+                density = (
+                    "按整篇均匀铺开：大约每 2–3 分钟一个标记，"
+                    "覆盖每一次界面切换、新代码段、新图表或新实物展示；"
+                    "纯口述、黑屏、重复画面不要标。"
+                )
+                strict = (
+                    f"标记少于 {low} 个视为不合格，必须重新补足；"
+                    "同一画面只标一次。"
+                )
             else:
                 count_rule = "请输出至少 3 个、最多 8 个"
                 density = ""
+                strict = ""
             lines.append(
                 "【重要】本次已提供原视频，截图标记会被真正渲染成图片。"
                 + count_rule
                 + " [[screenshot:HH:MM:SS]] 标记，"
                 "分别放在出现画面内容的时刻（幻灯片、代码、图表、演示操作、实物、屏幕文字）。"
                 + density
+                + strict
                 + "标记必须独占一行；时间戳必须从字幕里原样复制，不得编造。"
                 "宁可选该句靠后的时间戳——画面通常比话语晚出现。"
             )

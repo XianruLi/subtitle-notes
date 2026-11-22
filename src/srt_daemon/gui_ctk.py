@@ -10,6 +10,7 @@ Pages: 任务 / 新建任务 / 在线视频 / 设置 / 日志
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from pathlib import Path
@@ -1434,7 +1435,14 @@ class App:
                     line = job.lines.get_nowait()
                 except queue_module.Empty:
                     break
-                self._append_log(line + "\n")
+                # Child processes write to the log file AND echo the same
+                # records on stdout; the log page already tails the file, so
+                # appending stdout here duplicated every line.
+                looks_like_log = bool(
+                    re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[", line)
+                )
+                if not looks_like_log:
+                    self._append_log(line + "\n")
                 if key in ("fetch", "transcribe"):
                     self._append_online(line + "\n")
             if job.running and row is not None:

@@ -412,6 +412,49 @@ def generate_notes(
         screenshot_target=screenshot_target,
     )
 
+    # The model sometimes ignores the requested marker count. When that happens
+    # (and the video length implied a real target), ask once for a revision that
+    # only adds markers; keep it only if it actually helped.
+    if screenshot_target and screenshot_target > 0:
+        from src.srt_daemon.screenshots import parse_markers
+
+        low = max(3, int(round(screenshot_target * 0.6)))
+        found = len(parse_markers(markdown))
+        if found < low and config.screenshots_retry_if_short:
+            log.warning(
+                "Only %d marker(s) for a %s-image target - asking for a revision",
+                found,
+                screenshot_target,
+            )
+            progress_reporting.write_progress(
+                config.output_dir,
+                progress_reporting.NOTES,
+                stage=progress_reporting.STAGE_AI,
+                done=1,
+                total=1,
+                detail="补足截图标记",
+                file=path.name,
+            )
+            revised = client.refine_markers(
+                markdown,
+                low=low,
+                high=screenshot_target,
+                video_minutes=(duration or 0.0) / 60.0 or None,
+            )
+            if revised:
+                revised_count = len(parse_markers(revised))
+                if revised_count > found:
+                    log.info(
+                        "Revision added markers: %d -> %d", found, revised_count
+                    )
+                    markdown = revised
+                else:
+                    log.info(
+                        "Revision kept the original (%d -> %d markers)",
+                        found,
+                        revised_count,
+                    )
+
     metadata: dict[str, Any] = {
         "format": parsed.format_label,
         "profile": profile.id,

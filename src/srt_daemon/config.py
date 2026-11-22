@@ -509,6 +509,11 @@ class Config:
         """Lower bound for the dynamic count."""
         return int(self.screenshots_settings.get("min_count", 3))
 
+    @property
+    def screenshots_retry_if_short(self) -> bool:
+        """True when a note with too few markers is revised once."""
+        return bool(self.screenshots_settings.get("retry_if_short", True))
+
     def screenshot_target(self, duration_seconds: Optional[float]) -> Optional[int]:
         """How many images a video of this length should produce.
 

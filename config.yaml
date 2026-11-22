@@ -252,6 +252,7 @@ screenshots:
   dynamic_count: true
   per_minute: 0.5    # 20 min -> 10 images; 90 min -> 45 (then capped below)
   min_count: 3       # never fewer than this, even for a very short clip
+  retry_if_short: true   # if the model returns too few markers, ask once for a revision
   max_count: 40      # hard cap per note (also the ceiling for dynamic_count)
   width: 0           # 0 = keep the source resolution (1080p stays 1920x1080)
   best_frame_window: 6   # look 0-6s after each marker and keep the most detailed frame

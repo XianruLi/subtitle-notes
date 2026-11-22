@@ -122,3 +122,139 @@ class TestPipelinePassesTheTarget:
         )
 
         assert "至少 3 个、最多 8 个" in block
+
+class TestMarkerRefinement:
+    """One revision pass when the model returns too few markers."""
+
+    def test_pipeline_uses_the_revised_document(
+        self, temp_config: Config, tmp_path: Path
+    ) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        subtitle = project / "talk.srt"
+        subtitle.write_text(
+            "1\n00:00:01,000 --> 00:00:02,000\nhello\n", encoding="utf-8"
+        )
+
+        # A 20s video so 12 markers can all resolve to real frames.
+        import subprocess
+
+        subprocess.run(
+            [
+                "ffmpeg", "-nostdin", "-y", "-v", "error",
+                "-f", "lavfi", "-i", "testsrc=size=320x240:rate=5:duration=20",
+                "-pix_fmt", "yuv420p", str(project / "talk.mp4"),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        temp_config._data["screenshots"] = {
+            "enabled": True,
+            "dynamic_count": True,
+            "per_minute": 30.0,
+            "min_count": 3,
+            "max_count": 12,
+            "retry_if_short": True,
+            "width": 320,
+            "best_frame_window": 0,
+        }
+        first = "body\n\n[[screenshot:00:00:01]]\n"
+        revised = "body\n" + "".join(
+            f"\n[[screenshot:00:00:{second:02d}]]\n" for second in range(2, 14)
+        )
+
+        with patch(
+            "src.srt_daemon.ai_client.AiClient.classify_profile", return_value=None
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.process", return_value=first
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.refine_markers", return_value=revised
+        ) as refine:
+            result = generate_notes(temp_config, subtitle)
+
+        refine.assert_called_once()
+        text = result.output_path.read_text(encoding="utf-8")
+        assert text.count("![](images/") >= 7
+
+    def test_no_refine_when_enough_markers(
+        self, temp_config: Config, tmp_path: Path
+    ) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        subtitle = project / "talk.srt"
+        subtitle.write_text(
+            "1\n00:00:01,000 --> 00:00:02,000\nhello\n", encoding="utf-8"
+        )
+        import subprocess
+
+        subprocess.run(
+            [
+                "ffmpeg", "-nostdin", "-y", "-v", "error",
+                "-f", "lavfi", "-i", "testsrc=size=320x240:rate=5:duration=20",
+                "-pix_fmt", "yuv420p", str(project / "talk.mp4"),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        temp_config._data["screenshots"] = {
+            "enabled": True,
+            "dynamic_count": True,
+            "per_minute": 30.0,
+            "min_count": 3,
+            "max_count": 12,
+            "retry_if_short": True,
+            "width": 320,
+            "best_frame_window": 0,
+        }
+        enough = "body\n" + "".join(
+            f"\n[[screenshot:00:00:{second:02d}]]\n" for second in range(2, 12)
+        )
+
+        with patch(
+            "src.srt_daemon.ai_client.AiClient.classify_profile", return_value=None
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.process", return_value=enough
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.refine_markers"
+        ) as refine:
+            generate_notes(temp_config, subtitle)
+
+        refine.assert_not_called()
+
+    def test_refine_can_be_disabled(self, temp_config: Config, tmp_path: Path) -> None:
+        project = tmp_path / "proj"
+        project.mkdir()
+        subtitle = project / "talk.srt"
+        subtitle.write_text(
+            "1\n00:00:01,000 --> 00:00:02,000\nhello\n", encoding="utf-8"
+        )
+        import subprocess
+
+        subprocess.run(
+            [
+                "ffmpeg", "-nostdin", "-y", "-v", "error",
+                "-f", "lavfi", "-i", "testsrc=size=320x240:rate=5:duration=10",
+                "-pix_fmt", "yuv420p", str(project / "talk.mp4"),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        temp_config._data["screenshots"] = {
+            "enabled": True,
+            "dynamic_count": True,
+            "per_minute": 60.0,
+            "max_count": 12,
+            "retry_if_short": False,
+        }
+
+        with patch(
+            "src.srt_daemon.ai_client.AiClient.classify_profile", return_value=None
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.process",
+            return_value="body\n\n[[screenshot:00:00:01]]\n",
+        ), patch(
+            "src.srt_daemon.ai_client.AiClient.refine_markers"
+        ) as refine:
+            generate_notes(temp_config, subtitle)
+
+        refine.assert_not_called()
