@@ -139,6 +139,7 @@ def write_note(
     screenshots: Optional[bool] = None,
     output_root: Optional[Path] = None,
     progress: Optional[Callable[[str, int, int, str], None]] = None,
+    screenshot_target: Optional[int] = None,
 ) -> tuple[Path, int]:
     """Embed screenshots (optional) and write the Markdown file.
 
@@ -163,6 +164,7 @@ def write_note(
             Path(video_path) if video_path else None,
             staging,
             config=config,
+            max_count=screenshot_target,
             progress=(
                 None
                 if progress is None
@@ -361,11 +363,30 @@ def generate_notes(
         if video_path is not None:
             log.info("Using the sibling video for screenshots: %s", video_path.name)
     has_video = video_path is not None and config.screenshots_enabled
+
+    # How many pictures this video deserves: derived from its length when the
+    # dynamic count is enabled (20 min -> ~10 images instead of a fixed 3-8).
+    screenshot_target: Optional[int] = None
+    if has_video:
+        from src.srt_daemon.screenshots import find_ffmpeg, probe_duration
+
+        ffmpeg_path = find_ffmpeg()
+        duration = probe_duration(ffmpeg_path, Path(video_path)) if ffmpeg_path else None
+        screenshot_target = config.screenshot_target(duration)
+        if screenshot_target is not None:
+            log.info(
+                "Screenshot target: %.1f min video -> %d image(s) (%.2f/min, cap %d)",
+                (duration or 0) / 60.0,
+                screenshot_target,
+                config.screenshots_per_minute,
+                config.screenshots_max_count,
+            )
     log.info(
-        "Screenshots: enabled=%s  video=%s  asking model for markers=%s",
+        "Screenshots: enabled=%s  video=%s  asking model for markers=%s  target=%s",
         config.screenshots_enabled,
         video_path.name if video_path is not None else "(none)",
         has_video,
+        screenshot_target if screenshot_target is not None else "(default 3-8)",
     )
 
     def report_ai(done: int, total: int, detail: str) -> None:
@@ -388,6 +409,7 @@ def generate_notes(
         source_format=parsed.format_label,
         has_video=has_video,
         progress=report_ai,
+        screenshot_target=screenshot_target,
     )
 
     metadata: dict[str, Any] = {
@@ -421,6 +443,7 @@ def generate_notes(
         screenshots=screenshots,
         output_root=resolve_output_root(config, path, output_root),
         progress=report_stage,
+        screenshot_target=screenshot_target,
     )
     progress_reporting.clear_progress(config.output_dir, progress_reporting.NOTES)
     log.info("Note written: %s", output_path)

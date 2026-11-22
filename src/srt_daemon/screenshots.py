@@ -141,6 +141,48 @@ def extract_frame(
     return True
 
 
+def probe_duration(ffmpeg: str, video: Path) -> Optional[float]:
+    """Length of *video* in seconds, or None when it cannot be determined.
+
+    Uses ffprobe (shipped next to ffmpeg); falls back to parsing ffmpeg's
+    banner for installations that only have the main binary.
+    """
+    candidates = [Path(ffmpeg).with_name("ffprobe.exe"), Path(ffmpeg).with_name("ffprobe")]
+    probe = next((item for item in candidates if item.exists()), None)
+    try:
+        if probe is not None:
+            result = subprocess.run(
+                [
+                    str(probe),
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "csv=p=0",
+                    str(video),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode == 0:
+                return float(result.stdout.strip())
+        result = subprocess.run(
+            [ffmpeg, "-nostdin", "-i", str(video)], capture_output=True, text=True, timeout=60
+        )
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr or "")
+        if match:
+            return (
+                int(match.group(1)) * 3600
+                + int(match.group(2)) * 60
+                + float(match.group(3))
+            )
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        log.debug("Could not probe duration of %s: %s", video, exc)
+    return None
+
+
 def _detail_score(path: Path) -> float:
     """Rough "how much is going on in this picture" score.
 
@@ -228,6 +270,7 @@ def process_markdown(
     config: Config,
     ffmpeg: Optional[str] = None,
     progress: Optional[Callable[[int, int, str], None]] = None,
+    max_count: Optional[int] = None,
 ) -> ScreenshotResult:
     """Replace screenshot markers with real images.
 
@@ -249,7 +292,11 @@ def process_markdown(
     if not markers:
         return ScreenshotResult(markdown=markdown, found=0)
 
-    max_count = max(0, config.screenshots_max_count)
+    limit = max(0, config.screenshots_max_count)
+    if max_count is not None:
+        # The dynamic target narrows the configured hard cap.
+        limit = max(0, min(limit, int(max_count)))
+    max_count = limit
     ffmpeg_path = ffmpeg or find_ffmpeg()
 
     unique: list[Marker] = []

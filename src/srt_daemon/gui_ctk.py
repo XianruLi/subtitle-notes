@@ -824,6 +824,8 @@ class App:
         shots = Card(scroller, "截图")
         shots.pack(fill="x", pady=(0, 12))
         self.shot_enabled_var = ctk.BooleanVar(value=False)
+        self.shot_dynamic_var = ctk.BooleanVar(value=True)
+        self.shot_per_min_var = ctk.StringVar()
         self.shot_max_var = ctk.StringVar()
         self.shot_width_var = ctk.StringVar()
         ctk.CTkCheckBox(
@@ -831,8 +833,23 @@ class App:
             font=_font(12), checkbox_width=18, checkbox_height=18, corner_radius=4,
             fg_color=ACCENT, hover_color=ACCENT_HOVER, border_color=BORDER,
         ).pack(anchor="w", pady=(0, 6))
-        self._settings_row(shots.body, "最多张数", self.shot_max_var, "", None, placeholder="12")
-        self._settings_row(shots.body, "图片宽度", self.shot_width_var, "", None, placeholder="1280")
+        ctk.CTkCheckBox(
+            shots.body,
+            text="按视频时长决定张数（20 分钟约 10 张，长视频按上限截断）",
+            variable=self.shot_dynamic_var,
+            font=_font(12),
+            checkbox_width=18,
+            checkbox_height=18,
+            corner_radius=4,
+            fg_color=ACCENT,
+            hover_color=ACCENT_HOVER,
+            border_color=BORDER,
+        ).pack(anchor="w", pady=(0, 6))
+        self._settings_row(
+            shots.body, "每分钟张数", self.shot_per_min_var, "", None, placeholder="0.5"
+        )
+        self._settings_row(shots.body, "最多张数", self.shot_max_var, "", None, placeholder="40")
+        self._settings_row(shots.body, "图片宽度", self.shot_width_var, "", None, placeholder="0 = 原分辨率")
 
         window = Card(scroller, "窗口与启动")
         window.pack(fill="x", pady=(0, 12))
@@ -996,6 +1013,8 @@ class App:
             self.fetch_height_var.set(str(self.cfg.fetch_max_height))
             self.shot_enabled_var.set(self.cfg.screenshots_enabled)
             self.online_shots_var.set(self.cfg.screenshots_enabled)
+            self.shot_dynamic_var.set(self.cfg.screenshots_dynamic_count)
+            self.shot_per_min_var.set(str(self.cfg.screenshots_per_minute))
             self.shot_max_var.set(str(self.cfg.screenshots_max_count))
             self.shot_width_var.set(str(self.cfg.screenshots_width))
 
@@ -1065,6 +1084,20 @@ class App:
                 if height.isdigit():
                     set_config_value(path, "fetch", "max_height", int(height))
                 set_config_value(path, "screenshots", "enabled", bool(self.shot_enabled_var.get()))
+                set_config_value(
+                    path,
+                    "screenshots",
+                    "dynamic_count",
+                    bool(self.shot_dynamic_var.get()),
+                )
+                per_minute = self.shot_per_min_var.get().strip()
+                try:
+                    if per_minute:
+                        set_config_value(
+                            path, "screenshots", "per_minute", float(per_minute)
+                        )
+                except ValueError:
+                    pass
                 maximum = self.shot_max_var.get().strip()
                 if maximum.isdigit():
                     set_config_value(path, "screenshots", "max_count", int(maximum))

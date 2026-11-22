@@ -489,7 +489,44 @@ class Config:
     @property
     def screenshots_max_count(self) -> int:
         """Upper bound on embedded images per note."""
-        return int(self.screenshots_settings.get("max_count", 12))
+        return int(self.screenshots_settings.get("max_count", 40))
+
+    @property
+    def screenshots_dynamic_count(self) -> bool:
+        """True when the image count follows the video length."""
+        return bool(self.screenshots_settings.get("dynamic_count", True))
+
+    @property
+    def screenshots_per_minute(self) -> float:
+        """Images per minute of video used by the dynamic count."""
+        try:
+            return float(self.screenshots_settings.get("per_minute", 0.5))
+        except (TypeError, ValueError):
+            return 0.5
+
+    @property
+    def screenshots_min_count(self) -> int:
+        """Lower bound for the dynamic count."""
+        return int(self.screenshots_settings.get("min_count", 3))
+
+    def screenshot_target(self, duration_seconds: Optional[float]) -> Optional[int]:
+        """How many images a video of this length should produce.
+
+        Args:
+            duration_seconds: Video length in seconds, or None when unknown.
+
+        Returns:
+            A target between min_count and max_count, or None when the dynamic
+            count is disabled (the model then keeps its default 3-8).
+        """
+        if not self.screenshots_dynamic_count or not duration_seconds:
+            return None
+        raw = (float(duration_seconds) / 60.0) * self.screenshots_per_minute
+        target = int(round(raw))
+        return max(
+            self.screenshots_min_count,
+            min(self.screenshots_max_count, target),
+        )
 
     @property
     def screenshots_width(self) -> int:

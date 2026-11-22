@@ -184,6 +184,7 @@ class AiClient:
         source_format: Optional[str] = None,
         has_video: bool = False,
         progress: Optional[Callable[[int, int, str], None]] = None,
+        screenshot_target: Optional[int] = None,
     ) -> str:
         """Process subtitle text and return the requested Markdown document.
 
@@ -204,6 +205,8 @@ class AiClient:
                 model is told that picture markers will actually be rendered.
             progress: Optional callback (done, total, detail) used to report
                 chunk progress to the GUI.
+            screenshot_target: Expected number of screenshots for this video
+                (derived from its length); drives the marker count range.
             source_format: Subtitle format label (``SRT`` / ``VTT``).
 
         Returns:
@@ -220,7 +223,12 @@ class AiClient:
         profile = profile or self._profile
         system_prompt = self._system_prompt_for(profile)
         context = self._build_context_block(
-            filename, profile, speaker, source_format, has_video=has_video
+            filename,
+            profile,
+            speaker,
+            source_format,
+            has_video=has_video,
+            screenshot_target=screenshot_target,
         )
 
         subtitle_count = self._count_subtitles(text)
@@ -719,6 +727,7 @@ class AiClient:
         speaker: Optional[SpeakerInfo],
         source_format: Optional[str],
         has_video: bool = False,
+        screenshot_target: Optional[int] = None,
     ) -> str:
         """Build the per-file context block used by every API call.
 
@@ -739,11 +748,21 @@ class AiClient:
         """
         lines: list[str] = []
         if has_video:
+            if screenshot_target and screenshot_target > 0:
+                low = max(3, int(round(screenshot_target * 0.6)))
+                high = int(screenshot_target)
+                count_rule = f"请输出 {low}–{high} 个"
+                density = "画面密集的段落可以多标，纯口述、黑屏或重复画面不要标。"
+            else:
+                count_rule = "请输出至少 3 个、最多 8 个"
+                density = ""
             lines.append(
                 "【重要】本次已提供原视频，截图标记会被真正渲染成图片。"
-                "请输出 **至少 3 个、最多 8 个** [[screenshot:HH:MM:SS]] 标记，"
+                + count_rule
+                + " [[screenshot:HH:MM:SS]] 标记，"
                 "分别放在出现画面内容的时刻（幻灯片、代码、图表、演示操作、实物、屏幕文字）。"
-                "标记必须独占一行；时间戳必须从字幕里原样复制，不得编造。"
+                + density
+                + "标记必须独占一行；时间戳必须从字幕里原样复制，不得编造。"
                 "宁可选该句靠后的时间戳——画面通常比话语晚出现。"
             )
         if source_format:
