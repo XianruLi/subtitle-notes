@@ -38,7 +38,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
 > **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
-> [Releases · v0.5.2](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.5.2)
+> [Releases · v0.6.0](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.6.0)
 > —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
 
 ## 三种入口，按场景选
@@ -87,7 +87,7 @@ output:
 ## 截图怎么来的
 
 1. 有视频时，提示词会明确要求模型在"必须看画面"的地方输出
-   `[[screenshot:HH:MM:SS]]`（时间戳必须照抄字幕）
+   `[[screenshot:HH:MM:SS]]`（张数按视频时长决定，时间戳必须照抄字幕）
 2. 每个标记会在 **0/2/4/6/8 秒** 内取样几帧，用灰度方差挑**内容最丰富**的一帧
    （黑屏、淡入、空白幻灯片分数低），其余删掉
 3. 图片按标记时间命名（`images/shot-000321.jpg`），重新生成笔记时旧图会自动清理
@@ -298,6 +298,13 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 填「说话人数」。
 
 ## 更新日志
+
+**v0.6.0（2026-11-23）**
+
+- **截图数量按视频时长决定**：默认每分钟 0.5 张（20 分钟 → 10 张，90 分钟 → 45 张后截断），
+  最少 3 张、上限 40 张；模型仍自己挑选值得看的时刻
+- ffprobe 读取视频时长；范围写进提示词（如 20 分钟 → 要求 6–10 个标记），抽帧也按目标截断
+- 设置页新增「按视频时长决定张数」与「每分钟张数」
 
 **v0.5.2（2026-11-16）**
 

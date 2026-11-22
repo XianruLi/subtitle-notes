@@ -1,0 +1,36 @@
+﻿# Runtime requirements — Python 3.10+ (tested on 3.13), Windows / Linux / macOS
+# Install:  pip install -r requirements.txt
+
+# Folder watching
+watchdog>=4.0
+
+# LLM client (DeepSeek exposes an OpenAI-compatible API)
+openai>=1.0
+
+# Config / secrets
+python-dotenv>=1.0
+PyYAML>=6.0
+
+# Local speech-to-text (CPU or CUDA)
+faster-whisper>=1.2
+ctranslate2>=4.7
+av>=17.0
+tokenizers>=0.23
+huggingface-hub>=0.30
+
+# Speaker diarization (local ONNX models, no account needed)
+sherpa-onnx>=1.13
+onnxruntime>=1.26
+numpy>=2.1,<3
+
+# Desktop GUI
+customtkinter>=6.0
+darkdetect>=0.8
+pystray>=0.19
+pillow>=11.0
+
+# Online video (optional feature, disable with fetch.enabled: false)
+yt-dlp>=2026.10
+
+# Development
+pytest>=9.0
