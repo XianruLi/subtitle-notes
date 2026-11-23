@@ -46,7 +46,9 @@ ai:
   model: "deepseek-flash"
   # Maximum output tokens for the final visible response.
   # deepseek-flash also spends tokens on reasoning; 8192 starved long notes.
-  max_tokens: 16384
+  # deepseek-flash also spends tokens on reasoning. 32768 fits a 2-hour
+  # lecture note in one call (measured on a 116k-char transcript).
+  max_tokens: 32768
   # Temperature (0.0 = deterministic, 1.0 = creative).
   # For scientific/engineering content, keep at 0.0 to minimise hallucination.
   # deepseek-flash honours this; deepseek-v4-pro mostly ignores it.
@@ -67,7 +69,9 @@ ai:
   # Subtitle count threshold above which text is split into chunks
   # 1500 keeps one answer inside the model output budget (a 1430-entry
   # lecture used to fail with finish_reason=length); longer text is chunked.
-  chunk_threshold: 1500
+  # Above this entry count the transcript is chunked; 4000 keeps a full
+  # 2-hour lecture in one call.
+  chunk_threshold: 4000
 
   # --- Content-type profiles --------------------------------------------------
   # Which kind of Markdown document is produced for a file:

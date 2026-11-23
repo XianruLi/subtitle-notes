@@ -202,7 +202,7 @@ class Config:
     @property
     def ai_chunk_threshold(self) -> int:
         """Subtitle count above which text is split into chunks for AI."""
-        return self._data["ai"].get("chunk_threshold", 1500)
+        return self._data["ai"].get("chunk_threshold", 4000)
 
     @property
     def ai_system_prompt_file(self) -> Path:
