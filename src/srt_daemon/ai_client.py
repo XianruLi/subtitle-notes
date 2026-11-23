@@ -256,7 +256,26 @@ class AiClient:
         if progress is not None:
             progress(0, 1, "调用模型")
         user_message = self._build_user_message(text, filename, context)
-        result = self._call_api_with_retry(system_prompt, user_message)
+        try:
+            result = self._call_api_with_retry(system_prompt, user_message)
+        except RetryableAiError as exc:
+            # Most often finish_reason=length: a long transcript produced a note
+            # longer than the output budget, so every attempt came back empty.
+            # Splitting the transcript is the reliable fallback.
+            log.warning(
+                "Single-call answer failed (%s) — retrying with chunking", exc
+            )
+            chunks = self._chunk_text(text)
+            if len(chunks) <= 1:
+                raise
+            if progress is not None:
+                progress(0, len(chunks), "转为分块处理")
+            responses = self._process_chunks(
+                chunks, filename, system_prompt, context, progress=progress
+            )
+            return self._merge_responses(
+                responses, filename, system_prompt, context, speaker
+            )
         if progress is not None:
             progress(1, 1, "模型已返回")
         return result

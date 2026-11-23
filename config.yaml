@@ -64,7 +64,9 @@ ai:
   # Base seconds for exponential backoff: delay = base * 2^(attempt-1)
   retry_backoff_base_sec: 2
   # Subtitle count threshold above which text is split into chunks
-  chunk_threshold: 2000
+  # 1500 keeps one answer inside the model output budget (a 1430-entry
+  # lecture used to fail with finish_reason=length); longer text is chunked.
+  chunk_threshold: 1500
 
   # --- Content-type profiles --------------------------------------------------
   # Which kind of Markdown document is produced for a file:

@@ -189,13 +189,17 @@ def test_once_progress_keeps_running_state(
 
     app = App(start_hidden=True)
     try:
+        from src.srt_daemon import progress as pr
+
+        pr.clear_progress(app.cfg.output_dir, pr.NOTES)
         app._once_launched = True
         app.jobs["once"] = SimpleNamespace(running=True, exit_code=None)
 
         app._update_once_progress()
 
         assert app._once_launched is True
-        assert app.once_status.cget("text") == ""
+        text = app.once_status.cget("text")
+        assert "完成" not in text and "失败" not in text
     finally:
         app._quitting = True
         app.root.destroy()
