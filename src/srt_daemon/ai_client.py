@@ -680,9 +680,34 @@ class AiClient:
                 "Chunk %d/%d: %d chars → sending to API",
                 part_num, total, len(chunk),
             )
-            response = self._call_api_with_retry(
-                system_prompt, user_message,
-            )
+            try:
+                response = self._call_api_with_retry(
+                    system_prompt, user_message,
+                )
+            except RetryableAiError as exc:
+                # A very long chunk can starve the answer budget (the model is
+                # a reasoning model). Halving the chunk usually fits; give up
+                # after two levels of splitting.
+                halves = self._split_half(chunk)
+                if halves is None:
+                    raise
+                log.warning(
+                    "Chunk %d/%d failed (%s) — splitting it in half",
+                    part_num, total, exc,
+                )
+                response = ""
+                for half_index, half in enumerate(halves, start=1):
+                    piece = [f"Transcript file: {filename}", heading]
+                    if context:
+                        piece.append(context)
+                    piece.append(half)
+                    piece_message = "\n\n".join(piece)
+                    part = self._call_api_with_retry(system_prompt, piece_message)
+                    response += ("\n\n" if response else "") + part
+                    log.info(
+                        "  half %d/%d of chunk %d complete: %d chars",
+                        half_index, len(halves), part_num, len(part),
+                    )
             responses.append(response)
             log.info(
                 "Chunk %d/%d complete: %d chars response",
@@ -690,6 +715,21 @@ class AiClient:
             )
 
         return responses
+
+    @staticmethod
+    def _split_half(chunk: str) -> Optional[list[str]]:
+        """Split a chunk into two roughly equal parts, or None when too short."""
+        if len(chunk) < 4000:
+            return None
+        cut = len(chunk) // 2
+        # Prefer a newline near the middle so subtitle entries stay intact.
+        boundary = chunk.rfind("\n", 0, cut)
+        if boundary < len(chunk) // 4:
+            boundary = cut
+        first, second = chunk[:boundary].strip(), chunk[boundary:].strip()
+        if not first or not second:
+            return None
+        return [first, second]
 
     # ------------------------------------------------------------------
     # Internal: response merging

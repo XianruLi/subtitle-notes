@@ -45,7 +45,8 @@ ai:
   #   deepseek-v4-pro   — V4 Pro: slower, reasoning-capable
   model: "deepseek-flash"
   # Maximum output tokens for the final visible response.
-  max_tokens: 8192
+  # deepseek-flash also spends tokens on reasoning; 8192 starved long notes.
+  max_tokens: 16384
   # Temperature (0.0 = deterministic, 1.0 = creative).
   # For scientific/engineering content, keep at 0.0 to minimise hallucination.
   # deepseek-flash honours this; deepseek-v4-pro mostly ignores it.
