@@ -1121,7 +1121,9 @@ def main() -> None:
         if args.notes or args.profile:
             notes += _write_notes(config, result.subtitles, args.profile)
 
-    progress_reporting.clear_progress(config.output_dir, progress_reporting.TRANSCRIBE)
+    progress_reporting.clear_progress(
+        config.output_dir, progress_reporting.TRANSCRIBE, pid=os.getpid()
+    )
     log.info(
         "Transcription run finished: %d transcribed, %d skipped, %d failed, "
         "%d note(s) written",

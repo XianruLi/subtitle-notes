@@ -176,3 +176,27 @@ class TestStageRanges:
         assert "41.0%" in text  # 2%..80% range at 50%
         assert "120 段" in text
         assert "剩余约" in text
+
+class TestProgressOwnership:
+    def test_another_process_cannot_clear_it(self, tmp_path) -> None:
+        pr.write_progress(tmp_path, pr.TRANSCRIBE, stage=pr.STAGE_ASR, done=5, total=10)
+
+        pr.clear_progress(tmp_path, pr.TRANSCRIBE, pid=999_999)
+
+        assert pr.read_progress(tmp_path, pr.TRANSCRIBE) is not None
+
+    def test_owner_can_clear_it(self, tmp_path) -> None:
+        import os
+
+        pr.write_progress(tmp_path, pr.TRANSCRIBE, stage=pr.STAGE_ASR)
+
+        pr.clear_progress(tmp_path, pr.TRANSCRIBE, pid=os.getpid())
+
+        assert pr.read_progress(tmp_path, pr.TRANSCRIBE) is None
+
+    def test_pidless_clear_still_works(self, tmp_path) -> None:
+        pr.write_progress(tmp_path, pr.NOTES, stage=pr.STAGE_PARSE)
+
+        pr.clear_progress(tmp_path, pr.NOTES)
+
+        assert pr.read_progress(tmp_path, pr.NOTES) is None

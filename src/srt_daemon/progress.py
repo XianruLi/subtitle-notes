@@ -16,6 +16,10 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from src.srt_daemon.logger import get_logger
+
+log = get_logger(__name__)
+
 #: Kinds of job that publish progress.
 TRANSCRIBE = "transcribe"
 NOTES = "notes"
@@ -60,6 +64,7 @@ def write_progress(
         "detail": detail,
         "file": file,
         "started_at": float(started_at or 0.0),
+        "pid": os.getpid(),
         "updated_at": time.time(),
     }
     path = progress_path(output_dir, kind)
@@ -81,9 +86,26 @@ def read_progress(output_dir: str | Path, kind: str) -> Optional[dict[str, Any]]
         return None
 
 
-def clear_progress(output_dir: str | Path, kind: str) -> None:
-    """Remove a job's progress document."""
+def clear_progress(
+    output_dir: str | Path, kind: str, pid: Optional[int] = None
+) -> None:
+    """Remove a job's progress document.
+
+    When *pid* is given, the document is only removed if it was written by that
+    process.  A short one-shot run (for example a --scan that only generates
+    notes) must not wipe the progress of a transcription that is still going.
+    """
     path = progress_path(output_dir, kind)
+    if pid is not None:
+        current = read_progress(output_dir, kind)
+        if current and int(current.get("pid", 0) or 0) not in (0, pid):
+            log.debug(
+                "Keeping %s progress owned by pid %s (we are %s)",
+                kind,
+                current.get("pid"),
+                pid,
+            )
+            return
     for candidate in (path, path.with_suffix(path.suffix + ".tmp")):
         try:
             candidate.unlink()

@@ -16,6 +16,7 @@ Usage::
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -326,7 +327,7 @@ def generate_notes(
     parsed = parse_subtitle(path, with_timestamps=with_timestamps)
     if not parsed.entries:
         progress_reporting.clear_progress(
-            config.output_dir, progress_reporting.NOTES
+            config.output_dir, progress_reporting.NOTES, pid=os.getpid()
         )
         raise NotesPipelineError(f"No subtitle entries found in {path.name}")
 
@@ -488,7 +489,9 @@ def generate_notes(
         progress=report_stage,
         screenshot_target=screenshot_target,
     )
-    progress_reporting.clear_progress(config.output_dir, progress_reporting.NOTES)
+    progress_reporting.clear_progress(
+        config.output_dir, progress_reporting.NOTES, pid=os.getpid()
+    )
     log.info("Note written: %s", output_path)
 
     return NotesResult(
