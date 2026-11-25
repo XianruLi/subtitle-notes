@@ -95,3 +95,67 @@ class TestEmptyResponse:
             # The classifier swallows the error and returns nothing, so the
             # caller keeps the default profile.
             assert client.classify_profile(registry.all(), "some transcript") is None
+
+class TestTruncatedAnswerContinuation:
+    """finish_reason=length must continue, not save a half-written note."""
+
+    def _client(self, config) -> "object":
+        from src.srt_daemon.ai_client import AiClient
+
+        return AiClient(config)
+
+    def test_continues_until_stop(self, temp_config, monkeypatch) -> None:
+        client = self._client(temp_config)
+        responses = [
+            cont_response("第一段", "length"),
+            cont_response("，接着写第二段。", "stop"),
+        ]
+        calls = {"n": 0}
+
+        def fake_create(**params):
+            index = calls["n"]
+            calls["n"] += 1
+            return responses[index]
+
+        client._client = type("C", (), {"chat": type("Chat", (), {"completions": type("Comp", (), {"create": staticmethod(fake_create)})()})()})()
+
+        result = client._call_api("system", "user")
+
+        assert result == "第一段，接着写第二段。"
+        assert calls["n"] == 2
+
+    def test_stops_after_the_limit(self, temp_config) -> None:
+        temp_config._data["ai"]["max_continuations"] = 2
+        client = self._client(temp_config)
+        calls = {"n": 0}
+
+        def fake_create(**params):
+            calls["n"] += 1
+            return cont_response("x", "length")
+
+        client._client = type("C", (), {"chat": type("Chat", (), {"completions": type("Comp", (), {"create": staticmethod(fake_create)})()})()})()
+
+        result = client._call_api("system", "user")
+
+        assert result == "xxx"       # initial + 2 continuations
+        assert calls["n"] == 3       # never runs forever
+
+    def test_empty_answer_still_retries(self, temp_config) -> None:
+        import pytest
+
+        from src.srt_daemon.ai_client import RetryableAiError
+
+        client = self._client(temp_config)
+        client._client = type("C", (), {"chat": type("Chat", (), {"completions": type("Comp", (), {"create": staticmethod(lambda **p: cont_response("  ", "length"))})()})()})()
+
+        with pytest.raises(RetryableAiError):
+            client._call_api("system", "user")
+
+
+def cont_response(content: str, finish_reason: str):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content), finish_reason=finish_reason)],
+        usage=SimpleNamespace(completion_tokens=1),
+    )

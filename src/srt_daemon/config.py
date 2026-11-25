@@ -200,6 +200,14 @@ class Config:
         return self._data["ai"].get("retry_backoff_base_sec", 2)
 
     @property
+    def ai_max_continuations(self) -> int:
+        """How many times a truncated answer may be continued."""
+        try:
+            return int(self._data["ai"].get("max_continuations", 2))
+        except (TypeError, ValueError):
+            return 2
+
+    @property
     def ai_chunk_threshold(self) -> int:
         """Subtitle count above which text is split into chunks for AI."""
         return self._data["ai"].get("chunk_threshold", 4000)

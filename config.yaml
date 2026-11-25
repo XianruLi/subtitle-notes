@@ -72,6 +72,8 @@ ai:
   # Above this entry count the transcript is chunked; 4000 keeps a full
   # 2-hour lecture in one call.
   chunk_threshold: 4000
+  # If an answer still stops at max_tokens, continue it from the break.
+  max_continuations: 2
 
   # --- Content-type profiles --------------------------------------------------
   # Which kind of Markdown document is produced for a file:

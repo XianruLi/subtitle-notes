@@ -1134,6 +1134,43 @@ class AiClient:
         result = choice.message.content or ""
         finish_reason = getattr(choice, "finish_reason", None)
 
+        # A truncated answer (finish_reason=length) used to be written out as a
+        # half-finished note: the last paragraph, table or code block was cut
+        # mid-word. Ask the model to continue from the break instead.
+        parts = [result]
+        extra_rounds = 0
+        limit = max(0, int(self.config.ai_max_continuations))
+        while finish_reason == "length" and result.strip() and extra_rounds < limit:
+            extra_rounds += 1
+            log.warning(
+                "Answer hit max_tokens (%d chars so far) — requesting continuation %d/%d",
+                len("".join(parts)),
+                extra_rounds,
+                limit,
+            )
+            follow_up = dict(params)
+            follow_up["messages"] = [
+                *params["messages"],
+                {"role": "assistant", "content": "".join(parts)},
+                {
+                    "role": "user",
+                    "content": (
+                        "上面的输出在预算处被截断了。请从中断的位置继续输出剩余部分，"
+                        "不要重复已经写过的内容，也不要重新开头，直接从断点续写。"
+                    ),
+                },
+            ]
+            follow_up.pop("extra_body", None)
+            continuation = self._client.chat.completions.create(**follow_up)
+            cont_choice = continuation.choices[0]
+            piece = cont_choice.message.content or ""
+            finish_reason = getattr(cont_choice, "finish_reason", None)
+            if not piece.strip():
+                log.warning("Continuation returned nothing — stopping here")
+                break
+            parts.append(piece)
+            result = "".join(parts)
+
         if not result.strip():
             # An empty answer is a failure, not a result: it used to write a
             # note whose body was empty. Retry it like a transient error.
