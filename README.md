@@ -38,7 +38,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
 > **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
-> [Releases · v0.6.1](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.6.1)
+> [Releases · v0.6.2](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.6.2)
 > —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
 
 ## 三种入口，按场景选
@@ -298,6 +298,13 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 填「说话人数」。
 
 ## 更新日志
+
+**v0.6.2（2026-11-25）**
+
+- **长笔记不再被截断**：输出预算 8192 → 32768；2 小时讲座（3627 条字幕）单次调用写完
+- 分块阈值 1500 → 4000：普通讲座不再分块，笔记结构更连贯
+- 若仍撞上限且已有部分内容，**自动从断点续写**（最多 2 次），不会再出现半句 / 半张表
+- 进度文件带进程号：一次性的 `--scan` 不会误清正在进行中的转录进度
 
 **v0.6.1（2026-11-23）**
 
