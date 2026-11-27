@@ -294,6 +294,16 @@ class Config:
         return _resolve_path(str(raw), self._project_root)
 
     @property
+    def transcribe_output_beside_source(self) -> bool:
+        """Write subtitles next to a hand-picked recording instead of the inbox.
+
+        The watch directory drives automatic note generation, so a subtitle
+        written there would always produce notes.  Recordings picked from their
+        own folder keep the subtitle (and its note) beside the media instead.
+        """
+        return bool(self.transcribe_settings.get("output_beside_source", True))
+
+    @property
     def transcribe_extensions(self) -> list[str]:
         """Media extensions picked up when scanning a directory."""
         raw = self.transcribe_settings.get("extensions")

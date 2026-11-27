@@ -46,8 +46,11 @@ ai:
   #   deepseek-flash    — V4.1 Flash: fast & cheap (current default)
   #   deepseek-v4-pro   — V4 Pro: slower, reasoning-capable
   model: "deepseek-flash"
-  # Maximum output tokens for the final visible response.
-  max_tokens: 8192
+  # Output budget for the visible answer (reasoning tokens count too).
+  # 32768 fits a 2-hour lecture note in ONE call: measured 66k prompt tokens +
+  # 17k completion on a 116k-char transcript, finish_reason=stop. Raise further
+  # only if the provider's context window allows prompt + max_tokens.
+  max_tokens: 32768
   # Temperature (0.0 = deterministic, 1.0 = creative).
   # For scientific/engineering content, keep at 0.0 to minimise hallucination.
   # deepseek-flash honours this; deepseek-v4-pro mostly ignores it.
@@ -65,8 +68,15 @@ ai:
   max_retries: 3
   # Base seconds for exponential backoff: delay = base * 2^(attempt-1)
   retry_backoff_base_sec: 2
-  # Subtitle count threshold above which text is split into chunks
-  chunk_threshold: 2000
+  # Subtitle count threshold above which text is split into chunks.
+  # 1500 keeps one answer inside the model output budget (a 1430-entry lecture
+  # used to fail with finish_reason=length); chunked answers are merged after.
+  # Above this entry count the transcript is chunked. 4000 keeps a full
+  # 2-hour lecture in one call; chunking stays as a safety net for longer input.
+  chunk_threshold: 4000
+  # If the answer still stops at max_tokens, ask the model to continue from the
+  # break (this is what cut earlier notes off mid-sentence).
+  max_continuations: 2
 
   # --- Content-type profiles --------------------------------------------------
   # Which kind of Markdown document is produced for a file:
@@ -139,6 +149,10 @@ transcribe:
   # Where subtitles are written — keep this equal to the watch directory so the
   # daemon picks the transcript up automatically
   output_dir: "D:/personal_proj/视频字幕/"
+  # A recording picked from its own folder keeps the subtitle (and its note)
+  # beside the media file, so it never enters the watch directory and never
+  # triggers an automatic note.  Set false to always use output_dir above.
+  output_beside_source: true
   # Media extensions picked up when scanning a directory
   extensions: [".mp3", ".mp4", ".wav", ".m4a", ".mkv", ".mov", ".flac", ".aac", ".opus", ".wma", ".webm"]
   # OFF by default: the watch directory only picks up subtitle files, so a
@@ -254,6 +268,7 @@ screenshots:
   dynamic_count: true
   per_minute: 0.5    # 20 min -> 10 images; 90 min -> 45 (then capped below)
   min_count: 3       # never fewer than this, even for a very short clip
+  retry_if_short: true   # if the model returns too few markers, ask once for a revision
   max_count: 40      # hard cap per note (also the ceiling for dynamic_count)
   width: 0           # 0 = keep the source resolution (1080p stays 1920x1080)
   best_frame_window: 6   # look 0-6s after each marker and keep the most detailed frame

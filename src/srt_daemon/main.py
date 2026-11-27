@@ -81,8 +81,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=str,
         default=None,
         metavar="FILE",
-        help="Process a single subtitle file (.srt or .vtt) and exit. "
-        "Does not start the watcher.",
+        help="Process one subtitle file (.srt or .vtt), or every subtitle in a "
+        "folder, then exit. Does not start the watcher.",
     )
     parser.add_argument(
         "--profile",
@@ -176,64 +176,90 @@ def run_daemon(config: Config, profile: Optional[str] = None) -> None:
     log.info("SRT Daemon stopped")
 
 
-def run_once(
-    config: Config, file_path: str, profile: Optional[str] = None
-) -> None:
-    """Process a single subtitle file and print the output path.
-
-    This is a one-shot pipeline: detect the format (SRT / WebVTT), parse,
-    resolve the content-type profile, call AI, write Markdown.  The watch
-    directory and state file are **not** consulted — the file is always
-    (re-)processed on demand.
-
-    Args:
-        config: Fully-resolved :class:`Config` instance.
-        file_path: Path to the ``.srt`` / ``.vtt`` file (absolute or
-            relative to CWD).
-        profile: Optional profile id that overrides auto-detection.
-
-    Raises:
-        SystemExit: With code ``1`` if the file does not exist, its
-            format cannot be determined, or it contains no parseable
-            subtitle entries.
-    """
+def _process_one(config: Config, path: Path, profile: Optional[str]) -> bool:
+    """Run the notes pipeline for one subtitle; True when it worked."""
     from src.srt_daemon.ai_client import AiClientError
     from src.srt_daemon.pipeline import NotesPipelineError, generate_notes
     from src.srt_daemon.subtitle_parser import UnsupportedSubtitleFormat
 
+    try:
+        result = generate_notes(config, path, forced_profile=profile)
+    except (UnsupportedSubtitleFormat, NotesPipelineError, AiClientError) as exc:
+        log.error("Failed: %s - %s", path.name, exc)
+        print(f"FAILED {path.name}: {exc}", file=sys.stderr)
+        return False
+    except Exception as exc:  # noqa: BLE001 - one bad file must not abort a batch
+        log.exception("Unexpected failure for %s", path.name)
+        print(f"FAILED {path.name}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return False
+
+    print(str(result.output_path))
+    log.info("Single-shot processing complete: %s", result.output_path)
+    return True
+
+
+def _collect_subtitles(folder: Path) -> list[Path]:
+    """Every .srt/.vtt below *folder*, newest name order."""
+    files = [
+        entry for entry in folder.rglob('*')
+        if entry.is_file() and entry.suffix.lower() in ('.srt', '.vtt')
+    ]
+    return sorted(files, key=lambda p: str(p).lower())
+
+
+def run_once(
+    config: Config, file_path: str, profile: Optional[str] = None
+) -> None:
+    """Process one subtitle, or a whole folder of them, then exit.
+
+    Args:
+        config: Fully-resolved :class:`Config` instance.
+        file_path: A .srt/.vtt file, or a folder scanned recursively for
+            subtitle files.
+        profile: Optional profile id that overrides auto-detection.
+
+    Raises:
+        SystemExit: With code ``1`` when nothing was processed or any file
+            failed.
+    """
     path = Path(file_path).resolve()
 
-    # --- Validate input -------------------------------------------------------
     if not path.exists():
         log.error("File not found: %s", path)
         sys.exit(1)
+
+    if path.is_dir():
+        subtitles = _collect_subtitles(path)
+        if not subtitles:
+            log.error("No subtitle files under %s", path)
+            print(f"No .srt/.vtt files under {path}", file=sys.stderr)
+            sys.exit(1)
+        log.info(
+            "SRT Daemon v%s - batch mode  folder=%s  files=%d",
+            __version__,
+            path,
+            len(subtitles),
+        )
+        ok = failed = 0
+        for index, subtitle in enumerate(subtitles, start=1):
+            log.info("Batch %d/%d: %s", index, len(subtitles), subtitle.name)
+            if _process_one(config, subtitle, profile):
+                ok += 1
+            else:
+                failed += 1
+        log.info("Batch complete - %d ok, %d failed", ok, failed)
+        print(f"Batch complete: {ok} ok, {failed} failed")
+        if failed:
+            sys.exit(1)
+        return
+
     if not path.is_file():
         log.error("Not a regular file: %s", path)
         sys.exit(1)
 
-    log.info(
-        "SRT Daemon v%s — single-shot mode  file=%s",
-        __version__,
-        path.name,
-    )
-
-    # --- Parse -> profile -> AI -> write (shared pipeline) --------------------
-    try:
-        result = generate_notes(config, path, forced_profile=profile)
-    except UnsupportedSubtitleFormat as exc:
-        log.error("%s", exc)
-        print(f"Error: {exc}", file=sys.stderr)
+    log.info("SRT Daemon v%s - single-shot mode  file=%s", __version__, path.name)
+    if not _process_one(config, path, profile):
         sys.exit(1)
-    except NotesPipelineError as exc:
-        log.warning("%s", exc)
-        sys.exit(1)
-    except AiClientError as exc:
-        log.error("AI processing failed: %s", exc)
-        sys.exit(1)
-
-    # Print the output path so the caller can find the result.
-    print(str(result.output_path))
-    log.info("Single-shot processing complete: %s", result.output_path)
 
 
 def run_scan(config: Config, profile: Optional[str] = None) -> None:

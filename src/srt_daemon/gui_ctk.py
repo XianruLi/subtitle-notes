@@ -520,6 +520,11 @@ class App:
             text_color=TEXT, border_width=1, border_color=BORDER, font=_font(12),
         ).pack(side="left", padx=(0, 8))
         ctk.CTkButton(
+            row, text="添加文件夹…", command=self._pick_once_folder, width=110,
+            height=34, corner_radius=9, fg_color=CARD, hover_color=ACCENT_SOFT,
+            text_color=TEXT, border_width=1, border_color=BORDER, font=_font(12),
+        ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(
             row, text="生成笔记", command=self._run_once_selected, width=104,
             height=34, corner_radius=9, fg_color=ACCENT, hover_color=ACCENT_HOVER,
             font=_font(12, "bold"),
@@ -571,7 +576,8 @@ class App:
         media.pack(fill="x", pady=(0, 20))
         ctk.CTkLabel(
             media.body,
-            text="本地录音或录像 → 带说话人的字幕；勾选下面「转录后自动生成笔记」可直接出笔记。",
+            text="本地录音或录像 → 带说话人的字幕，字幕与笔记写回所选媒体所在的文件夹；"
+            "勾选「转录后自动生成笔记」才会出笔记（不会因为放进视频字幕而自动生成）。",
             font=_font(12),
             text_color=MUTED,
         ).pack(anchor="w")
@@ -1207,6 +1213,40 @@ class App:
             self._once_file = chosen
             self.once_label.configure(text=Path(chosen).name, text_color=TEXT)
 
+    def _pick_once_folder(self) -> None:
+        """Pick a folder and turn every subtitle inside it into a note."""
+        from tkinter import filedialog, messagebox
+        chosen = filedialog.askdirectory(
+            title="选择字幕文件夹（递归处理其中的 .srt / .vtt）"
+        )
+        if not chosen:
+            return
+        folder = Path(chosen)
+        subtitles = [
+            entry for entry in folder.rglob("*")
+            if entry.suffix.lower() in (".srt", ".vtt")
+        ]
+        if not subtitles:
+            messagebox.showinfo(
+                "没有字幕文件",
+                f"{folder} 里没有 .srt / .vtt 文件。",
+            )
+            return
+        profile = self.once_profile_var.get()
+        extra = [] if profile == "auto" else ["--profile", profile]
+        if not self._start_job("once", ["--once", str(folder), *extra]):
+            return
+        self._once_launched = True
+        self._once_watch_profile = profile
+        folders = getattr(self, "_source_dirs", [])
+        if str(folder) not in folders:
+            folders.append(str(folder))
+            self._source_dirs = folders[-20:]
+        self.once_status.configure(
+            text=f"批量生成中：{len(subtitles)} 个字幕（{folder.name}）",
+            text_color=ACCENT,
+        )
+        self.once_bar.set(0)
     def _run_once_selected(self) -> None:
         chosen = getattr(self, "_once_file", "")
         if not chosen:

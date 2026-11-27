@@ -490,6 +490,7 @@ class Transcriber:
             if word_timestamps is None
             else word_timestamps
         )
+        self._output_dir_explicit = output_dir is not None
         self._output_dir = (output_dir or config.transcribe_output_dir).resolve()
         self._output_format = (
             output_format or config.transcribe_output_format
@@ -804,6 +805,33 @@ class Transcriber:
         )
         return result
 
+    def _subtitle_dir_for(self, source: Path) -> Path:
+        """Which folder receives the subtitle for *source*.
+
+        Files dropped into the watched inbox (or the watch directory itself)
+        still go to transcribe.output_dir so the daemon picks them up. A
+        recording the user picked from its own folder keeps its subtitle
+        beside it — otherwise the watcher would always generate a note, even
+        when note generation was not requested.
+        """
+        if self._output_dir_explicit or not self._config.transcribe_output_beside_source:
+            return self._output_dir
+        try:
+            resolved = source.resolve()
+        except OSError:
+            return self._output_dir
+        watched = (
+            self._config.output_dir.resolve(),
+            self._config.transcribe_source_dir.resolve(),
+        )
+        for root in watched:
+            try:
+                resolved.relative_to(root)
+                return self._output_dir
+            except ValueError:
+                continue
+        return resolved.parent
+
     def _write_subtitles(
         self,
         cues: Sequence[Cue],
@@ -813,14 +841,16 @@ class Transcriber:
         diarization: str,
         language: str,
     ) -> list[Path]:
-        """Write the requested subtitle format(s) next to the watch directory."""
+        """Write the requested subtitle format(s) into the chosen folder."""
         written: list[Path] = []
+        target_dir = self._subtitle_dir_for(source)
+        target_dir.mkdir(parents=True, exist_ok=True)
         wanted = self._output_format
         if wanted in ("vtt", "both", ""):
             written.append(
                 write_vtt(
                     cues,
-                    self._output_dir / f"{source.stem}.vtt",
+                    target_dir / f"{source.stem}.vtt",
                     source=source,
                     model=model,
                     diarization=diarization,
@@ -831,7 +861,7 @@ class Transcriber:
             written.append(
                 write_srt(
                     cues,
-                    self._output_dir / f"{source.stem}.srt",
+                    target_dir / f"{source.stem}.srt",
                     source=source,
                     model=model,
                     diarization=diarization,
@@ -1001,7 +1031,16 @@ def _write_notes(config: Config, subtitles: Sequence[Path], profile: Optional[st
     written = 0
     for subtitle in subtitles:
         try:
-            result = generate_notes(config, subtitle, forced_profile=profile)
+            # A subtitle written beside its recording must keep its note
+            # there too; only watched subtitles follow output.mode.
+            output_root = None
+            try:
+                subtitle.resolve().parent.relative_to(config.output_dir.resolve())
+            except ValueError:
+                output_root = subtitle.resolve().parent
+            result = generate_notes(
+                config, subtitle, forced_profile=profile, output_root=output_root
+            )
         except Exception as exc:  # noqa: BLE001 - one failure must not stop the run
             log.error("Note generation failed for %s: %s", subtitle.name, exc)
             print(f"FAILED note {subtitle.name}: {exc}", file=sys.stderr)

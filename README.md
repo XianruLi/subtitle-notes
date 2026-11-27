@@ -38,7 +38,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
 > **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
-> [Releases · v0.6.2](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.6.2)
+> [Releases · v0.6.3](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.6.3)
 > —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
 
 ## 三种入口，按场景选
@@ -298,6 +298,14 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 填「说话人数」。
 
 ## 更新日志
+
+**v0.6.3（2026-11-28）**
+
+- 「新建任务 → 本地字幕 → 笔记」新增**添加文件夹**：递归批量处理文件夹里的所有
+  .srt/.vtt，失败不中断（命令行等价：`--once <文件夹> --profile course`）
+- 自行选择视频/音频转录时，**字幕与笔记写回媒体所在文件夹**，不再进监听目录；
+  因此只有勾选「转录后自动生成笔记」才会生成，不会被监听顺带处理
+  （`transcribe.output_beside_source: true`）
 
 **v0.6.2（2026-11-25）**
 

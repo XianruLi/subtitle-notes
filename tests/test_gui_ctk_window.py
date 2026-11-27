@@ -283,3 +283,43 @@ def test_single_call_ai_shows_elapsed_time(
         pr.clear_progress(app.cfg.output_dir, pr.NOTES)
         app._quitting = True
         app.root.destroy()
+
+def test_folder_button_batches_subtitles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The subtitle->notes card can take a whole folder."""
+    from src.srt_daemon.gui_ctk import App
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    settings = tmp_path / "gui_settings.json"
+    GuiSettings(start_watcher_on_launch=False, minimize_to_tray=False).save(settings)
+    monkeypatch.setattr(App, "_gui_settings_path", lambda self: settings)
+    monkeypatch.setattr(App, "_init_tray", lambda self: None)
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        App, "_start_job", lambda self, key, args: captured.update(key=key, args=args) or True
+    )
+
+    folder = tmp_path / "course"
+    (folder / "week 2").mkdir(parents=True)
+    (folder / "01 intro.srt").write_text("x", encoding="utf-8")
+    (folder / "week 2" / "02 deep dive.vtt").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(
+        "tkinter.filedialog.askdirectory", lambda **kwargs: str(folder)
+    )
+
+    app = App(start_hidden=True)
+    try:
+        app.once_profile_var.set("course")
+        app._pick_once_folder()
+
+        assert captured["key"] == "once"
+        args = captured["args"]
+        assert args[0] == "--once"
+        assert args[1] == str(folder)
+        assert args[args.index("--profile") + 1] == "course"
+        assert "2 个字幕" in app.once_status.cget("text")
+    finally:
+        app._quitting = True
+        app.root.destroy()

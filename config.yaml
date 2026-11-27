@@ -146,6 +146,9 @@ transcribe:
   # Where subtitles are written — keep this equal to the watch directory so the
   # daemon picks the transcript up automatically
   output_dir: "videos/"
+  # 自己选文件夹转录时，字幕（以及笔记）写回媒体旁边，不进监听目录，
+  # 因此只有勾选「转录后自动生成笔记」才会出笔记。false = 总是写进 output_dir。
+  output_beside_source: true
   # Media extensions picked up when scanning a directory
   extensions: [".mp3", ".mp4", ".wav", ".m4a", ".mkv", ".mov", ".flac", ".aac", ".opus", ".wma", ".webm"]
   # OFF by default: the watch directory only picks up subtitle files, so a
