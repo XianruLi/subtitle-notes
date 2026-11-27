@@ -195,6 +195,8 @@ class App:
         self._status_text = ""
         self._transcribe_files: list[str] = []
         self._once_file: str = ""
+        self._once_folder: str = ""
+        self._once_folder_count: int = 0
         self._once_launched = False
         self._once_watch_profile = "auto"
         self._source_dirs: list[str] = []
@@ -1211,11 +1213,15 @@ class App:
             # Keep the full path: the job runs with the project root as cwd, so
             # a bare file name would point at the wrong folder.
             self._once_file = chosen
+            self._once_folder = ""
+            self._once_folder_count = 0
             self.once_label.configure(text=Path(chosen).name, text_color=TEXT)
+            self.once_status.configure(text="已选择字幕文件，点「生成笔记」开始", text_color=MUTED)
 
     def _pick_once_folder(self) -> None:
-        """Pick a folder and turn every subtitle inside it into a note."""
+        """Pick a folder; the batch starts only when the note button is pressed."""
         from tkinter import filedialog, messagebox
+
         chosen = filedialog.askdirectory(
             title="选择字幕文件夹（递归处理其中的 .srt / .vtt）"
         )
@@ -1232,34 +1238,41 @@ class App:
                 f"{folder} 里没有 .srt / .vtt 文件。",
             )
             return
-        profile = self.once_profile_var.get()
-        extra = [] if profile == "auto" else ["--profile", profile]
-        if not self._start_job("once", ["--once", str(folder), *extra]):
-            return
-        self._once_launched = True
-        self._once_watch_profile = profile
-        folders = getattr(self, "_source_dirs", [])
-        if str(folder) not in folders:
-            folders.append(str(folder))
-            self._source_dirs = folders[-20:]
+        self._once_folder = str(folder)
+        self._once_folder_count = len(subtitles)
+        self._once_file = ""
+        self.once_label.configure(
+            text=f"文件夹：{folder.name}（{len(subtitles)} 个字幕）",
+            text_color=TEXT,
+        )
         self.once_status.configure(
-            text=f"批量生成中：{len(subtitles)} 个字幕（{folder.name}）",
-            text_color=ACCENT,
+            text="已选择文件夹，点「生成笔记」开始批量处理",
+            text_color=MUTED,
         )
         self.once_bar.set(0)
-    def _run_once_selected(self) -> None:
-        chosen = getattr(self, "_once_file", "")
-        if not chosen:
-            from tkinter import filedialog
 
-            picked = filedialog.askopenfilename(
-                title="选择字幕文件", filetypes=[("Subtitles", "*.srt *.vtt")]
-            )
-            if not picked:
-                return
-            self._once_file = picked
-            self.once_label.configure(text=Path(picked).name, text_color=TEXT)
-            chosen = picked
+    def _run_once_selected(self) -> None:
+        """Process the picked file, or every subtitle in the picked folder."""
+        folder = getattr(self, "_once_folder", "")
+        batch = bool(folder)
+        if batch:
+            chosen = folder
+            count = int(getattr(self, "_once_folder_count", 0) or 0)
+        else:
+            chosen = getattr(self, "_once_file", "")
+            if not chosen:
+                from tkinter import filedialog
+
+                picked = filedialog.askopenfilename(
+                    title="选择字幕文件", filetypes=[("Subtitles", "*.srt *.vtt")]
+                )
+                if not picked:
+                    return
+                self._once_file = picked
+                self.once_label.configure(text=Path(picked).name, text_color=TEXT)
+                chosen = picked
+            count = 1
+
         profile = self.once_profile_var.get()
         extra = [] if profile == "auto" else ["--profile", profile]
         if not self._start_job("once", ["--once", chosen, *extra]):
@@ -1268,15 +1281,21 @@ class App:
         self._once_launched = True
         self._once_watch_profile = profile
         folders = getattr(self, "_source_dirs", [])
-        parent = str(Path(chosen).parent)
-        if parent not in folders:
-            folders.append(parent)
+        target = str(Path(chosen) if batch else Path(chosen).parent)
+        if target not in folders:
+            folders.append(target)
             self._source_dirs = folders[-20:]
-        self.once_status.configure(
-            text=f"正在生成：{Path(chosen).name}"
-            "（读取字幕 → 调用 AI → 插入截图，约 30–60 秒）",
-            text_color=ACCENT,
-        )
+        if batch:
+            self.once_status.configure(
+                text=f"正在批量生成：{count} 个字幕（{Path(chosen).name}）",
+                text_color=ACCENT,
+            )
+        else:
+            self.once_status.configure(
+                text=f"正在生成：{Path(chosen).name}"
+                "（读取字幕 → 调用 AI → 插入截图，约 30–60 秒）",
+                text_color=ACCENT,
+            )
         self.once_bar.set(0)
 
     # -- transcription --------------------------------------------------------

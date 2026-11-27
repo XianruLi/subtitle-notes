@@ -284,10 +284,10 @@ def test_single_call_ai_shows_elapsed_time(
         app._quitting = True
         app.root.destroy()
 
-def test_folder_button_batches_subtitles(
+def test_folder_selection_waits_for_the_button(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The subtitle->notes card can take a whole folder."""
+    """Picking a folder only selects it; the note button starts the batch."""
     from src.srt_daemon.gui_ctk import App
 
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
@@ -296,9 +296,9 @@ def test_folder_button_batches_subtitles(
     monkeypatch.setattr(App, "_gui_settings_path", lambda self: settings)
     monkeypatch.setattr(App, "_init_tray", lambda self: None)
 
-    captured: dict[str, object] = {}
+    started: list[tuple[str, list[str]]] = []
     monkeypatch.setattr(
-        App, "_start_job", lambda self, key, args: captured.update(key=key, args=args) or True
+        App, "_start_job", lambda self, key, args: started.append((key, args)) or True
     )
 
     folder = tmp_path / "course"
@@ -314,12 +314,49 @@ def test_folder_button_batches_subtitles(
         app.once_profile_var.set("course")
         app._pick_once_folder()
 
-        assert captured["key"] == "once"
-        args = captured["args"]
+        assert started == []                      # nothing runs on pick
+        assert "2 个字幕" in app.once_label.cget("text")
+        assert "生成笔记" in app.once_status.cget("text")
+
+        app._run_once_selected()
+
+        assert len(started) == 1
+        key, args = started[0]
+        assert key == "once"
         assert args[0] == "--once"
         assert args[1] == str(folder)
         assert args[args.index("--profile") + 1] == "course"
-        assert "2 个字幕" in app.once_status.cget("text")
+        assert "批量生成" in app.once_status.cget("text")
+    finally:
+        app._quitting = True
+        app.root.destroy()
+
+
+def test_picking_a_file_clears_the_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from src.srt_daemon.gui_ctk import App
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-not-used")
+    settings = tmp_path / "gui_settings.json"
+    GuiSettings(start_watcher_on_launch=False, minimize_to_tray=False).save(settings)
+    monkeypatch.setattr(App, "_gui_settings_path", lambda self: settings)
+    monkeypatch.setattr(App, "_init_tray", lambda self: None)
+
+    app = App(start_hidden=True)
+    try:
+        app._once_folder = str(tmp_path)
+        app._once_folder_count = 3
+        monkeypatch.setattr(
+            "tkinter.filedialog.askopenfilename",
+            lambda **kwargs: str(tmp_path / "single.srt"),
+        )
+
+        app._pick_once_file()
+
+        assert app._once_folder == ""
+        assert app._once_folder_count == 0
+        assert app._once_file.endswith("single.srt")
     finally:
         app._quitting = True
         app.root.destroy()

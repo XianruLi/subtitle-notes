@@ -38,7 +38,7 @@ python -m src.srt_daemon.main --scan   # 或者命令行扫一遍
 笔记默认生成在 `output/<文件名>/` 下（可以改成跟着源文件走，见下）。
 
 > **不想装 Python？** 直接下 Windows 便携版（解压即用，不用装依赖）：
-> [Releases · v0.6.3](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.6.3)
+> [Releases · v0.6.4](https://github.com/XianruLi/subtitle-notes/releases/tag/v0.6.4)
 > —— 解压后双击 `SRTDaemon.exe`，第一次仍需自己填 `.env`。
 
 ## 三种入口，按场景选
@@ -298,6 +298,10 @@ dist\SRTDaemon\SRTDaemon.exe --selftest
 填「说话人数」。
 
 ## 更新日志
+
+**v0.6.4（2026-11-28）**
+
+- 「添加文件夹…」选好后**不再自动开始**：只是选定，点「生成笔记」才开始批量处理
 
 **v0.6.3（2026-11-28）**
 

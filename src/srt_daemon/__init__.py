@@ -11,5 +11,5 @@ speaker-labelled subtitles first:
     python -m src.srt_daemon.transcribe --new
 """
 
-__version__ = "0.6.3"
+__version__ = "0.6.4"
 __author__ = "Daemon Project"
